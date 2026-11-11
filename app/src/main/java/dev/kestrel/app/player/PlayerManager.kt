@@ -452,7 +452,8 @@ object PlayerManager {
             it is org.schabi.newpipe.extractor.exceptions.PrivateContentException ||
                 it is org.schabi.newpipe.extractor.exceptions.PaidContentException ||
                 it is org.schabi.newpipe.extractor.exceptions.GeographicRestrictionException ||
-                (it is org.schabi.newpipe.extractor.exceptions.AgeRestrictedContentException && !Graph.account.isSignedIn)
+                (it is org.schabi.newpipe.extractor.exceptions.AgeRestrictedContentException && !Graph.account.isSignedIn) ||
+                (it.javaClass == org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException::class.java && it.message?.contains("UNPLAYABLE") == true)
         }
     }
 
@@ -461,7 +462,15 @@ object PlayerManager {
         Graph.store.addHistory(video)
         reportHistory(video.id)
         loadSegments(video.id)
-        val r = runCatching { Streams.fromNewPipe(NpRepo.stream(video.id)) }.getOrNull()
+        val res = runCatching { Streams.fromNewPipe(NpRepo.stream(video.id)) }
+        res.exceptionOrNull()?.let { e ->
+            if (unplayable(e) && _now.value?.video?.id == video.id) {
+                WebHost.release()
+                _now.update { it?.copy(web = false, loading = false, error = dev.kestrel.app.ui.friendlyError(e)) }
+                return
+            }
+        }
+        val r = res.getOrNull()
         if (r == null) {
             // Details lookup failed on this network: at least get title and channel.
             if (video.title.isBlank()) basicInfo(video.id)?.let { (title, channel) ->

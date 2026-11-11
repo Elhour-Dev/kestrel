@@ -33,6 +33,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
@@ -104,10 +105,11 @@ fun ShortsScreen() {
             if (page >= shorts.size - 3) vm.loadMore()
         }
     }
+    val web = PlayerManager.now.collectAsStateWithLifecycle().value?.web == true
     VerticalPager(pager, Modifier.fillMaxSize().background(Color.Black), key = { shorts[it].id }) { page ->
         val v = shorts[page]
         Box(Modifier.fillMaxSize()) {
-            if (page == current && PlayerManager.now.value?.web == true) {
+            if (page == current && web) {
                 WebPlayer(Modifier.fillMaxSize())
             } else if (page == current) {
                 AndroidView(

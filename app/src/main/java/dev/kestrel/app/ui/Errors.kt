@@ -28,7 +28,9 @@ fun friendlyError(e: Throwable): String {
         has(GeographicRestrictionException::class.java) -> "This video isn't available in your country."
         has(PrivateContentException::class.java) -> "This video is private."
         has(PaidContentException::class.java) -> "This video needs a paid membership."
-        has(ContentNotAvailableException::class.java) -> e.message?.takeIf { it.length < 140 } ?: "This content isn't available."
+        // NewPipe messages look like: Got error UNPLAYABLE: "reason". Show just the reason.
+        has(ContentNotAvailableException::class.java) -> root.firstNotNullOfOrNull { c -> c.message?.let { Regex("\"(.+)\"").find(it)?.groupValues?.get(1) } }
+            ?: e.message?.takeIf { it.length < 140 } ?: "This content isn't available."
         has(IOException::class.java) -> "Network error. Check your connection and try again."
         else -> (e.message ?: e.javaClass.simpleName).take(160)
     }
