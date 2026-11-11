@@ -1,0 +1,82 @@
+name: Daily update
+
+# Every day: update NewPipeExtractor to its latest release, build, run the smoke tests.
+# If the version changed and everything passes, commit it and publish a new release.
+# If anything fails, open (or comment on) an issue, which GitHub emails to the repo owner.
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      changed: ${{ steps.bump.outputs.changed }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK parts
+        run: sdkmanager "platforms;android-37" "build-tools;36.0.0" > /dev/null
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Update NewPipeExtractor
+        id: bump
+        run: |
+          LATEST=$(gh api repos/TeamNewPipe/NewPipeExtractor/releases/latest --jq .tag_name)
+          CURRENT=$(grep '^newpipe-extractor' gradle/libs.versions.toml | cut -d'"' -f2)
+          echo "current=$CURRENT latest=$LATEST"
+          if [ -n "$LATEST" ] && [ "$LATEST" != "$CURRENT" ]; then
+            sed -i "s/^newpipe-extractor = \".*\"/newpipe-extractor = \"$LATEST\"/" gradle/libs.versions.toml
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: Smoke tests (search, stream, download, SponsorBlock)
+        run: ./gradlew :app:testDebugUnitTest --tests '*SmokeTest*' --console=plain
+
+      - name: Commit the update
+        if: steps.bump.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Update NewPipeExtractor to ${{ steps.bump.outputs.version }}"
+          git push
+
+      - name: Report failure
+        if: failure()
+        run: |
+          TITLE="Daily update failed"
+          BODY="NewPipeExtractor update, build or smoke tests failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          NUM=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number')
+          if [ -n "$NUM" ]; then gh issue comment "$NUM" --body "$BODY"; else gh issue create --title "$TITLE" --body "$BODY"; fi
+
+  release:
+    needs: update
+    if: needs.update.outputs.changed == 'true'
+    uses: ./.github/workflows/release.yml
+    with:
+      ref: main
+    secrets: inherit

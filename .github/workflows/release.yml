@@ -1,0 +1,91 @@
+name: Release
+
+# Builds, runs the smoke tests, and publishes a GitHub release that contains only the APK.
+# Run it by hand (Actions > Release > Run workflow), or it is called by the daily update job.
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        default: main
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK parts
+        run: sdkmanager "platforms;android-37" "build-tools;36.0.0" > /dev/null
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Smoke tests (search, stream, download, SponsorBlock)
+        run: ./gradlew :app:testDebugUnitTest --tests '*SmokeTest*' --console=plain
+
+      - name: Version
+        run: |
+          CODE=$(( $(git rev-list --count HEAD) + 100 ))
+          echo "CODE=$CODE" >> "$GITHUB_ENV"
+          if gh release view "v1.$CODE" > /dev/null 2>&1; then
+            echo "Release v1.$CODE already exists, nothing to do."
+            echo "SKIP=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Decode signing key
+        if: env.SKIP != '1'
+        env:
+          KEYSTORE_B64: ${{ secrets.KESTREL_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then echo "::error::Secret KESTREL_KEYSTORE_B64 is missing"; exit 1; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "KESTREL_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build signed APK
+        if: env.SKIP != '1'
+        env:
+          KESTREL_KEYSTORE_PASSWORD: ${{ secrets.KESTREL_KEYSTORE_PASSWORD }}
+          KESTREL_KEY_ALIAS: ${{ secrets.KESTREL_KEY_ALIAS }}
+          KESTREL_KEY_PASSWORD: ${{ secrets.KESTREL_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease -PversionCode=$CODE --console=plain
+
+      - name: Publish release
+        if: env.SKIP != '1'
+        run: |
+          APK="kestrel-1.$CODE.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$APK"
+          EXTRACTOR=$(grep '^newpipe-extractor' gradle/libs.versions.toml | cut -d'"' -f2)
+          gh release create "v1.$CODE" "$APK" \
+            --title "Kestrel 1.$CODE" \
+            --notes "Automatic build. NewPipeExtractor $EXTRACTOR. Smoke tests passed."
+          rm -f "$KESTREL_KEYSTORE"
+
+      - name: Report failure
+        if: failure()
+        run: |
+          TITLE="Kestrel release failed"
+          BODY="The release build or smoke tests failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          NUM=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number')
+          if [ -n "$NUM" ]; then gh issue comment "$NUM" --body "$BODY"; else gh issue create --title "$TITLE" --body "$BODY"; fi
