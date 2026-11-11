@@ -71,6 +71,7 @@ object NpRepo {
                 uploaded = item.textualUploadDate,
                 isLive = item.streamType == StreamType.LIVE_STREAM,
                 isShort = item.isShortFormContent || item.url.contains("/shorts/"),
+                uploadedAt = runCatching { item.uploadDate?.offsetDateTime()?.toInstant()?.toEpochMilli() }.getOrNull() ?: 0,
             )
         }
         is ChannelInfoItem -> channelId(item.url)?.let {

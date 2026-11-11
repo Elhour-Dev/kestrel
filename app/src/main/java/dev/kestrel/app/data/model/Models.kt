@@ -19,6 +19,7 @@ data class Video(
     val uploaded: String? = null,
     val isLive: Boolean = false,
     val isShort: Boolean = false,
+    val uploadedAt: Long = 0,
 ) : Item {
     override val key get() = "v:$id"
     val url get() = "https://www.youtube.com/watch?v=$id"
