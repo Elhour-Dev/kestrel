@@ -104,7 +104,8 @@ object Health {
             Streams.preferFallback = true
             return CheckResult(Feature.Streams, true, "Using backup video source")
         }
-        return CheckResult(Feature.Streams, false, "Videos can't be played right now. Downloads you already have still play.")
+        val hint = if (Graph.account.session.value == null) " YouTube is blocking this network (often a VPN). Sign in with Google or switch network." else ""
+        return CheckResult(Feature.Streams, false, "Videos can't be played right now.$hint Downloads still play.")
     }
 
     private suspend fun checkAccount(): CheckResult {

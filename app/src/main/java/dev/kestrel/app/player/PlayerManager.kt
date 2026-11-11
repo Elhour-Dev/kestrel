@@ -245,6 +245,7 @@ object PlayerManager {
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
+                android.util.Log.w("Kestrel", "resolve failed for ${video.id}", e)
                 _now.update { it?.copy(loading = false, error = friendlyError(e)) }
             }
         }

@@ -6,6 +6,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,7 +64,12 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 @Composable
 fun Logo(size: Int = 96) {
-    Image(painterResource(R.drawable.ic_logo), null, Modifier.size(size.dp))
+    Box(
+        Modifier.size(size.dp).clip(androidx.compose.foundation.shape.CircleShape)
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFFE3803F), androidx.compose.ui.graphics.Color(0xFFA8461A)))),
+    ) {
+        Image(painterResource(R.drawable.ic_launcher_foreground), null, Modifier.fillMaxSize())
+    }
 }
 
 @Composable

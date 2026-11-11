@@ -74,7 +74,9 @@ class InnerTube(private val account: AccountStore) {
         visitorData = null
     }
 
-    private fun sapisidHash(cookies: Map<String, String>): String? {
+    private fun sapisidHash(cookies: Map<String, String>): String? = authHeader(cookies)
+
+    fun authHeader(cookies: Map<String, String>): String? {
         val sapisid = cookies["SAPISID"] ?: cookies["__Secure-3PAPISID"] ?: return null
         val ts = System.currentTimeMillis() / 1000
         val hash = MessageDigest.getInstance("SHA-1").digest("$ts $sapisid $BASE".toByteArray())
