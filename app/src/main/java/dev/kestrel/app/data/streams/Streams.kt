@@ -163,6 +163,8 @@ object Fallback {
 
     /** Used with the Google session: YouTube lets signed-in users through its bot check. */
     private val authClients = listOf(
+        // Safari web client: returns an HLS manifest, which plays without extra tokens.
+        Client("WEB", 1, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20251105.01.00") }, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)", web = true, auth = true),
         Client("TVHTML5", 7, { "7.20251105.10.00" }, "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version", auth = true),
         Client("WEB", 1, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20251105.01.00") }, Http.BROWSER_UA, web = true, auth = true),
     )
@@ -294,10 +296,15 @@ object Fallback {
         }
 
         val audio = raw.filter { it.str("mimeType")?.startsWith("audio") == true }.mapNotNull { runCatching { opt(it) }.getOrNull() }
+        if (audio.isEmpty()) android.util.Log.w("Kestrel", "${c.name} ua=${c.ua.take(30)} streamingData keys=${(r["streamingData"] as? JsonObject)?.keys} fmt0=${raw.firstOrNull()?.keys}")
         val video = raw.filter { it.str("mimeType")?.startsWith("video") == true }.mapNotNull { runCatching { opt(it) }.getOrNull() }
         val live = d.str("isLive") == "true"
         val hls = r.at("streamingData").str("hlsManifestUrl")
-        if (!live) {
+        val hlsOnly = audio.isEmpty() && hls != null
+        if (hlsOnly) {
+            val code = Http.client.newCall(Request.Builder().url(hls!!).header("User-Agent", c.ua).build()).execute().use { it.code }
+            if (code !in 200..299) error("${c.name}: HLS refused (HTTP $code)")
+        } else if (!live) {
             // Make sure the links really download before trusting this client.
             val probe = audio.firstOrNull { it.ext == "m4a" } ?: audio.firstOrNull() ?: error("${c.name}: no audio")
             val code = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(probe.url, 0, 4095, 1)).execute().use { it.code }
@@ -317,7 +324,7 @@ object Fallback {
             video = v,
             description = d.str("shortDescription").orEmpty(),
             channelAvatar = null, subscribers = -1, likes = -1, uploadDate = null,
-            videoOnly = video, audio = audio, muxed = emptyList(),
+            videoOnly = if (hlsOnly) emptyList() else video, audio = if (hlsOnly) emptyList() else audio, muxed = emptyList(),
             hls = hls, subtitles = emptyList(), related = emptyList(), viaFallback = true,
         )
     }

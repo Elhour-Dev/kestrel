@@ -40,7 +40,7 @@ class YtDataSource : BaseDataSource(true) {
             }
         }
 
-        fun isPlayback(url: String) = url.contains("googlevideo.com/videoplayback")
+        fun isPlayback(url: String) = url.contains("googlevideo.com/videoplayback?")
 
         /** Builds a ranged request the same way the player does. Shared with the downloader. */
         fun rangedRequest(url: String, start: Long, endInclusive: Long, rn: Int): Request {
