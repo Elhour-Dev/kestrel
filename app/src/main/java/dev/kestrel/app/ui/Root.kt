@@ -255,13 +255,13 @@ private fun SessionBanner(nav: AppNav) {
 private fun MiniPlayer(onOpen: () -> Unit) {
     val now by PlayerManager.now.collectAsStateWithLifecycle()
     val np = now ?: return
-    var playing by remember { mutableStateOf(PlayerManager.player.isPlaying) }
+    var playing by remember { mutableStateOf(PlayerManager.isPlaying()) }
     var progress by remember { mutableStateOf(0f) }
     LaunchedEffect(np.video.id) {
         while (true) {
-            playing = PlayerManager.player.isPlaying || PlayerManager.player.playWhenReady
-            val d = PlayerManager.player.duration
-            progress = if (d > 0) PlayerManager.player.currentPosition / d.toFloat() else 0f
+            playing = PlayerManager.isPlayingOrWill()
+            val d = PlayerManager.durationMs()
+            progress = if (d > 0) PlayerManager.positionMs() / d.toFloat() else 0f
             kotlinx.coroutines.delay(500)
         }
     }
@@ -278,8 +278,7 @@ private fun MiniPlayer(onOpen: () -> Unit) {
                         color = if (np.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 IconButton(onClick = {
-                    val p = PlayerManager.player
-                    if (p.isPlaying) p.pause() else p.play()
+                    PlayerManager.toggle()
                     playing = !playing
                 }) { Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/pause") }
                 IconButton(onClick = { PlayerManager.stop() }) { Icon(Icons.Default.Close, "Close") }

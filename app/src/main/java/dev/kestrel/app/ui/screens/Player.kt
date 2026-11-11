@@ -128,8 +128,7 @@ private fun VideoSurface(np: NowPlaying, activity: MainActivity, modifier: Modif
     val inPip = MainActivity.Ui.inPip
     if (np.web) {
         Box(modifier) {
-            WebPlayer(np.video.id, np.webStartSec, Modifier.fillMaxSize())
-            if (!inPip) Text("Web player", color = Color.White.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.TopEnd).padding(6.dp))
+            WebPlayer(Modifier.fillMaxSize())
         }
         return
     }
@@ -246,7 +245,9 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
                 item { Chip(Icons.Default.Headphones, "Audio only", np.audioOnly) { PlayerManager.setAudioOnly(!np.audioOnly) } }
                 item {
                     Chip(Icons.Outlined.OpenInNew, "Popup") {
-                        if (PopupService.canDraw(ctx)) {
+                        if (np.web) {
+                            nav.message("Popup isn't available in the web player")
+                        } else if (PopupService.canDraw(ctx)) {
                             PopupService.start(ctx)
                             nav.back()
                             activity.moveTaskToBack(true)
@@ -257,7 +258,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
                     }
                 }
                 item { Chip(Icons.Default.PictureInPicture, "PiP") { activity.enterPip() } }
-                if (r != null && !r.isLive && np.localPath == null) item {
+                if (r != null && !r.isLive && np.localPath == null && !np.web) item {
                     Chip(Icons.Default.HighQuality, r.pickVideo(np.quality)?.label ?: "Quality") { showQuality = true }
                 }
                 item {

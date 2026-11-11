@@ -72,7 +72,13 @@ object Health {
     private suspend fun guarded(f: Feature, block: suspend () -> CheckResult): CheckResult = try {
         withTimeout(25_000) { block() }
     } catch (e: Exception) {
-        CheckResult(f, false, "Check timed out or failed: ${e.message ?: e.javaClass.simpleName}")
+        if (f == Feature.Streams) webPlayer() else CheckResult(f, false, "Check timed out or failed: ${e.message ?: e.javaClass.simpleName}")
+    }
+
+    /** Our links don't work here: play videos in YouTube's own web player instead. */
+    private fun webPlayer(): CheckResult {
+        Streams.blockedUntil = System.currentTimeMillis() + Streams.BLOCK_MS
+        return CheckResult(Feature.Streams, true, "Using YouTube's web player")
     }
 
     private suspend fun checkSearch(): CheckResult {
@@ -107,8 +113,7 @@ object Health {
             Streams.preferFallback = true
             return CheckResult(Feature.Streams, true, "Using backup video source")
         }
-        val hint = if (Graph.account.session.value == null) " YouTube is blocking this network (often a VPN). Sign in with Google or switch network." else ""
-        return CheckResult(Feature.Streams, false, "Videos can't be played right now.$hint Downloads still play.")
+        return webPlayer()
     }
 
     private suspend fun checkAccount(): CheckResult {

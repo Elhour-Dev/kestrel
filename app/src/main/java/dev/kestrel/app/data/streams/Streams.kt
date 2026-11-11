@@ -77,11 +77,17 @@ object Streams {
     /** Forces the fallback client. Set by the startup health check when NewPipe streams fail. */
     @Volatile var preferFallback = false
 
+    /** Set when this network caps stream links at ~1 MB; videos go straight to the web player until then. */
+    @Volatile var blockedUntil = 0L
+    const val BLOCK_MS = 30 * 60_000L
+    fun linksBlocked() = System.currentTimeMillis() < blockedUntil
+
     suspend fun resolve(videoId: String): Resolved {
         // Signed-in links get through YouTube's bot check on networks where signed-out ones don't.
         val signedIn = runCatching { dev.kestrel.app.Graph.account.session.value != null }.getOrDefault(false)
         if (preferFallback || signedIn) {
             runCatching { return Fallback.resolve(videoId) }
+            if (linksBlocked()) throw java.io.IOException("This network blocks stream links")
         }
         return try {
             val r = fixLinks(fromNewPipe(NpRepo.stream(videoId)))
@@ -229,8 +235,6 @@ object Fallback {
         Regex("\"clientVersion\":\"(7\\.[0-9.]+)\"").find(html)?.groupValues?.get(1)
     }.getOrNull()?.also { tvVer = it } ?: "7.20261102.18.00"
 
-    @Volatile private var diagTag = ""
-
     /** Index of the client that worked last time; tried first. */
     @Volatile private var preferred = 0
 
@@ -249,15 +253,7 @@ object Fallback {
             val ds = session.dataSyncId.substringBefore("||").ifBlank { null }
             val playerPot = dev.kestrel.app.player.PoTokens.mint(videoId)
             val captured = dev.kestrel.app.player.PotCapture.get(session, videoId)
-            android.util.Log.w("Kestrel", "DIAG captured pot=${captured?.length}")
             val streamPot = captured ?: ds?.let { dev.kestrel.app.player.PoTokens.mint(it) }
-            // TEMP: same request without our own player token, to see if that token is what caps links at 1 MB.
-            authClients.firstOrNull { it.name == "MWEB" }?.let { m ->
-                diagTag = "noPlayerPot"
-                runCatching { tryClient(m, videoId, session.visitorData.ifBlank { freshVisitor() }, sts, null, streamPot, session) }
-                    .onFailure { android.util.Log.w("Kestrel", "DIAG[noPlayerPot] ${it.message}") }
-                diagTag = "withPlayerPot"
-            }
             for (c in authClients) {
                 try {
                     val r = tryClient(c, videoId, session.visitorData.ifBlank { freshVisitor() }, sts, playerPot, if (c.web) streamPot else null, session)
@@ -343,7 +339,6 @@ object Fallback {
             runCatching { JsSolver.solve(nVals, sVals, mobile) }.onFailure { android.util.Log.w("Kestrel", "solver failed: $it") }.getOrNull()
         } else null
         var newPipeBroken = false
-        var sigLogged = 0
 
         fun urlOf(f: JsonObject): String? {
             var u = f.str("url")
@@ -353,7 +348,6 @@ object Fallback {
                 val sig = solved?.sig?.get(s)
                     ?: org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, s)
                 u = q["url"] + "&" + (q["sp"] ?: "signature") + "=" + java.net.URLEncoder.encode(sig, "UTF-8")
-                if (sigLogged++ == 0) android.util.Log.w("Kestrel", "DIAG sig ours=${sig.take(20)}.. np=${runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, s).take(20) }.getOrElse { it.toString().take(80) }} sp=${q["sp"]} len=${s.length}->${sig.length} sts=$sts")
             }
             val raw0 = u!!
             val n = JsSolver.nOf(raw0)
@@ -396,27 +390,11 @@ object Fallback {
             val probe = audio.firstOrNull { it.ext == "m4a" } ?: audio.firstOrNull() ?: error("${c.name}: no audio (fmts=${raw.size} urls=${raw.count { it.str("url") != null }} cipher=${raw.count { it.str("signatureCipher") != null }} sabr=${r.at("streamingData").str("serverAbrStreamingUrl") != null})")
             val code = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(probe.url, 0, 4095, 1)).execute().use { it.code }
             if (code !in 200..299) error("${c.name}: stream links refused (HTTP $code, ciphered=${raw.count { it.str("signatureCipher") != null }}/${raw.size})")
-            run {
-                val v = video.firstOrNull { it.height in 1..720 && it.ext == "mp4" }
-                val vc = v?.let { Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(it.url, 0, 4095, 1)).execute().use { r2 -> r2.code } }
-                val a2 = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(probe.url, 0, 2097151, 2)).execute().use { r2 -> r2.code }
-                val a3 = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(probe.url, 2097152, 4194303, 3)).execute().use { r2 -> r2.code }
-                android.util.Log.w("Kestrel", "DIAG ${c.name} audio=$code video(${v?.itag})=$vc audio2=$a2 audio3=$a3 ciphered=${raw.count { it.str("signatureCipher") != null }}")
-                if (session != null) {
-                    // TEMP: which form of the streaming token lets bytes past 1 MB through?
-                    val base = probe.url.replace(Regex("&pot=[^&]*"), "")
-                    val tok = Regex("&pot=([^&]*)").find(probe.url)?.groupValues?.get(1)
-                    val variants = listOf(
-                        "asIs" to probe.url,
-                        "noPad" to (tok?.let { "$base&pot=${it.trimEnd('=')}" } ?: base),
-                        "pctPad" to (tok?.let { "$base&pot=${it.replace("=", "%3D")}" } ?: base),
-                        "none" to base,
-                    )
-                    val res = variants.mapIndexed { i, (label, u3) ->
-                        "$label=" + Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(u3, 1048576, 1572863, i + 10)).execute().use { r2 -> r2.code }
-                    }
-                    android.util.Log.w("Kestrel", "DIAG[$diagTag] past1MB $res tokLen=${tok?.length}")
-                }
+            // Some networks only get the first ~1 MB of each link, then 403. Check a range past that.
+            val past = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(probe.url, 1_048_576, 1_052_671, 2)).execute().use { it.code }
+            if (past == 403) {
+                Streams.blockedUntil = System.currentTimeMillis() + Streams.BLOCK_MS
+                error("${c.name}: stream links stop after 1 MB (HTTP 403)")
             }
         } else if (hls == null) error("${c.name}: no live stream")
         val v = Video(

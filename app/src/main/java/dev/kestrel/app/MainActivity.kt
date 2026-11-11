@@ -79,7 +79,7 @@ class MainActivity : ComponentActivity() {
 
     private fun shouldPip(): Boolean {
         val now = PlayerManager.now.value ?: return false
-        return Graph.settings.autoPip.value && Ui.onPlayerScreen && PlayerManager.player.isPlaying && !now.audioOnly && !PopupService.isShowing
+        return Graph.settings.autoPip.value && Ui.onPlayerScreen && PlayerManager.isPlaying() && !now.audioOnly && !PopupService.isShowing
     }
 
     fun enterPip(): Boolean = runCatching {
@@ -102,7 +102,7 @@ class MainActivity : ComponentActivity() {
         Graph.store.saveNow()
         val bgAllowed = Graph.settings.backgroundPlay.value
         if (!bgAllowed && !Ui.inPip && !PopupService.isShowing && !isChangingConfigurations) {
-            PlayerManager.player.pause()
+            PlayerManager.pause()
         }
     }
 }

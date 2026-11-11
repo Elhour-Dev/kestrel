@@ -130,7 +130,7 @@ object PotCapture {
 
     /** Streaming token for this session, or null when it couldn't be read. */
     suspend fun get(session: Session, videoId: String): String? = mutex.withLock {
-        val key = session.dataSyncId + "|" + videoId
+        val key = session.dataSyncId
         val now = System.currentTimeMillis()
         token?.takeIf { now - it.second < TTL && owner == key }?.let { return it.first }
         val ctx = app ?: return null
@@ -174,14 +174,12 @@ object PotCapture {
             @android.webkit.JavascriptInterface
             fun body(b64: String) {
                 val bytes = runCatching { android.util.Base64.decode(b64, android.util.Base64.DEFAULT) }.getOrNull() ?: return
-                Log.w(TAG, "DIAG top ${layout(bytes)}")
-                field(bytes, 19)?.let { Log.w(TAG, "DIAG f19 ${layout(it)}") }
                 val pot = tokenFromSabrRequest(bytes)
                 Log.i(TAG, "media request body ${bytes.size} bytes, token=${pot?.length}")
                 pot?.let { found.complete(it) }
             }
             @android.webkit.JavascriptInterface
-            fun log(m: String) { Log.w(TAG, "DIAG js $m") }
+            fun log(m: String) { Log.d(TAG, m) }
         }, "KPot")
         if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
             androidx.webkit.WebViewCompat.addDocumentStartJavaScript(w, HOOK, setOf("https://m.youtube.com"))

@@ -92,7 +92,7 @@ fun ShortsScreen() {
         PlayerManager.player.repeatMode = Player.REPEAT_MODE_ONE
         onDispose {
             PlayerManager.player.repeatMode = Player.REPEAT_MODE_OFF
-            PlayerManager.player.pause()
+            PlayerManager.pause()
         }
     }
     LaunchedEffect(pager) {
@@ -107,7 +107,9 @@ fun ShortsScreen() {
     VerticalPager(pager, Modifier.fillMaxSize().background(Color.Black), key = { shorts[it].id }) { page ->
         val v = shorts[page]
         Box(Modifier.fillMaxSize()) {
-            if (page == current) {
+            if (page == current && PlayerManager.now.value?.web == true) {
+                WebPlayer(Modifier.fillMaxSize())
+            } else if (page == current) {
                 AndroidView(
                     factory = { ctx ->
                         PlayerView(ctx).apply {

@@ -23,6 +23,7 @@ import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import dev.kestrel.app.Graph
+import dev.kestrel.app.data.newpipe.NpRepo
 import dev.kestrel.app.data.SponsorBlock
 import dev.kestrel.app.data.SponsorCategories
 import dev.kestrel.app.data.model.SponsorSegment
@@ -51,9 +52,8 @@ data class NowPlaying(
     val audioOnly: Boolean = false,
     val localPath: String? = null,
     val segments: List<SponsorSegment> = emptyList(),
-    /** Our links are blocked: play in YouTube's own web player instead. */
+    /** Our links are blocked: play in YouTube's own web player ([WebHost]) instead. */
     val web: Boolean = false,
-    val webStartSec: Long = 0,
 )
 
 /** Owns the single ExoPlayer used by the screen, background service, PiP and the popup. */
@@ -106,7 +106,25 @@ object PlayerManager {
                 }
             }
         })
+        WebHost.onProgress = { pos, _ -> onWebProgress(pos) }
+        WebHost.onEnded = { onWebEnded() }
         handler.post(ticker)
+    }
+
+    // ------------- controls that work for both players -------------
+
+    private val web get() = _now.value?.web == true
+    fun isPlaying() = if (web) WebHost.playing else player.isPlaying
+    fun isPlayingOrWill() = if (web) WebHost.playing else player.isPlaying || player.playWhenReady
+    fun positionMs() = if (web) WebHost.positionMs else player.currentPosition
+    fun durationMs() = if (web) WebHost.durationMs else player.duration
+    fun pause() = if (web) WebHost.pause() else player.pause()
+    fun toggle() {
+        when {
+            isPlaying() -> pause()
+            web -> WebHost.resume()
+            else -> player.play()
+        }
     }
 
     private val ticker = object : Runnable {
@@ -118,8 +136,28 @@ object PlayerManager {
 
     private fun onTick() {
         val np = _now.value ?: return
-        if (!player.isPlaying) return
-        val pos = player.currentPosition
+        if (np.web || !player.isPlaying) return
+        onPosition(np, player.currentPosition) { player.seekTo(it) }
+    }
+
+    private fun onWebProgress(pos: Long) {
+        val np = _now.value ?: return
+        if (np.web && WebHost.videoId == np.video.id && WebHost.playing) onPosition(np, pos) { WebHost.seekTo(it) }
+    }
+
+    private fun onWebEnded() {
+        val np = _now.value ?: return
+        if (!np.web) return
+        Graph.store.savePosition(np.video.id, 0)
+        when {
+            player.repeatMode == Player.REPEAT_MODE_ONE -> { WebHost.seekTo(0); WebHost.resume() }
+            hasNext() -> next()
+            else -> WebHost.pause()
+        }
+    }
+
+    /** SponsorBlock skips and saving the position, for either player. */
+    private fun onPosition(np: NowPlaying, pos: Long, seek: (Long) -> Unit) {
         if (Graph.settings.sponsorBlockEnabled.value && np.segments.isNotEmpty()) {
             val cats = Graph.settings.sponsorBlockCategories.value
             val seg = np.segments.firstOrNull {
@@ -127,7 +165,7 @@ object PlayerManager {
             }
             if (seg != null) {
                 skipped += seg.uuid
-                player.seekTo(seg.endMs)
+                seek(seg.endMs)
                 if (Graph.settings.sponsorBlockToast.value) {
                     _messages.tryEmit("Skipped ${SponsorCategories.all[seg.category] ?: seg.category}")
                 }
@@ -156,6 +194,7 @@ object PlayerManager {
     fun playLocal(video: Video, path: String, audioOnly: Boolean) {
         saveCurrentPosition()
         loadJob?.cancel()
+        WebHost.release()
         _queue.value = listOf(video)
         _index.value = 0
         _now.value = NowPlaying(video, loading = false, audioOnly = audioOnly, localPath = path)
@@ -177,8 +216,8 @@ object PlayerManager {
     }
 
     fun previous() {
-        if (player.currentPosition > 5000 || _index.value == 0) {
-            player.seekTo(0)
+        if (positionMs() > 5000 || _index.value == 0) {
+            if (web) WebHost.seekTo(0) else player.seekTo(0)
             return
         }
         _index.value -= 1
@@ -196,12 +235,17 @@ object PlayerManager {
     fun setQuality(height: Int) {
         val np = _now.value ?: return
         val r = np.resolved ?: return
+        if (np.web) return
         _now.value = np.copy(quality = height)
         rebuild(r, keepPosition = true)
     }
 
     fun setAudioOnly(on: Boolean) {
         val np = _now.value ?: return
+        if (np.web) {
+            _messages.tryEmit("Audio only isn't available in the web player")
+            return
+        }
         _now.value = np.copy(audioOnly = on)
         if (np.localPath != null) return
         np.resolved?.let { rebuild(it, keepPosition = true) }
@@ -212,13 +256,15 @@ object PlayerManager {
         loadJob?.cancel()
         player.stop()
         player.clearMediaItems()
+        WebHost.release()
         _now.value = null
         _queue.value = emptyList()
     }
 
     fun saveCurrentPosition() {
         val np = _now.value ?: return
-        if (!np.video.isLive && player.currentPosition > 0) Graph.store.savePosition(np.video.id, player.currentPosition)
+        val pos = positionMs()
+        if (!np.video.isLive && pos > 0) Graph.store.savePosition(np.video.id, pos)
     }
 
     fun retry() {
@@ -236,6 +282,28 @@ object PlayerManager {
         _now.value = NowPlaying(video, loading = true, quality = Graph.settings.defaultQuality.value, audioOnly = audioOnly)
         player.stop()
         player.clearMediaItems()
+        if (Streams.linksBlocked()) {
+            // This network blocks our links: go straight to the web player, fetch details on the side.
+            startWeb(video, resumeSec(video))
+            loadJob = scope.launch {
+                Graph.store.addHistory(video)
+                reportHistory(video.id)
+                loadSegments(video.id)
+                val r = runCatching { Streams.fromNewPipe(NpRepo.stream(video.id)) }.getOrNull()
+                if (r == null) {
+                    // Details lookup failed on this network: at least get title and channel.
+                    if (video.title.isBlank()) basicInfo(video.id)?.let { (title, channel) ->
+                        _now.update { if (it?.video?.id == video.id) it.copy(video = it.video.copy(title = title, channelName = channel)) else it }
+                    }
+                    return@launch
+                }
+                val v = r.video.copy(thumbnail = video.thumbnail.ifBlank { r.video.thumbnail })
+                val details = r.copy(video = v, videoOnly = emptyList(), audio = emptyList(), muxed = emptyList(), hls = null)
+                _now.update { if (it?.video?.id == video.id) it.copy(video = v, resolved = details) else it }
+            }
+            return
+        }
+        WebHost.release()
         loadJob = scope.launch {
             try {
                 val r = Streams.resolve(video.id)
@@ -250,6 +318,9 @@ object PlayerManager {
             } catch (e: Exception) {
                 android.util.Log.w("Kestrel", "resolve failed for ${video.id}", e)
                 useWebPlayer()
+                Graph.store.addHistory(video)
+                reportHistory(video.id)
+                loadSegments(video.id)
             }
         }
     }
@@ -346,6 +417,12 @@ object PlayerManager {
             _now.update { it?.copy(error = "Can't play this file: ${error.errorCodeName}") }
             return
         }
+        val code = (error.cause as? androidx.media3.datasource.HttpDataSource.InvalidResponseCodeException)?.responseCode
+        if (code == 403) {
+            // Links refused mid-play: YouTube's own player still works on these networks.
+            useWebPlayer()
+            return
+        }
         if (!retried) {
             // Stream URLs expire or get blocked: fetch fresh ones (fallback client on 2nd try) and continue.
             retried = true
@@ -368,9 +445,33 @@ object PlayerManager {
 
     /** Switch the current video to the web player (keeps the position). */
     private fun useWebPlayer() {
-        val pos = (player.currentPosition / 1000).coerceAtLeast(0)
+        val np = _now.value ?: return
+        val pos = player.currentPosition
         player.stop()
-        android.util.Log.w("Kestrel", "switching to web player for ${_now.value?.video?.id}")
-        _now.update { it?.copy(loading = false, error = null, web = true, webStartSec = pos) }
+        android.util.Log.i("Kestrel", "switching to web player for ${np.video.id}")
+        startWeb(np.video, if (pos > 5_000) pos / 1000 else resumeSec(np.video))
+    }
+
+    private fun startWeb(video: Video, startSec: Long) {
+        _now.update { it?.copy(loading = false, error = null, web = true) }
+        WebHost.play(appContext, video.id, startSec)
+    }
+
+    /** Title and channel name from YouTube's public oEmbed endpoint. */
+    private suspend fun basicInfo(id: String): Pair<String, String>? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            val url = "https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=$id"
+            val body = dev.kestrel.app.data.net.Http.client.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { it.body.string() }
+            val o = org.json.JSONObject(body)
+            o.getString("title") to o.optString("author_name")
+        }.getOrNull()
+    }
+
+    /** Saved position to resume from, in seconds (0 = start). */
+    private fun resumeSec(video: Video): Long {
+        if (!Graph.settings.resumePlayback.value || video.isLive) return 0
+        val saved = Graph.store.position(video.id)
+        val durMs = if (video.durationSec > 0) video.durationSec * 1000 else Long.MAX_VALUE
+        return if (saved > 5_000 && saved < durMs - 15_000) saved / 1000 else 0
     }
 }

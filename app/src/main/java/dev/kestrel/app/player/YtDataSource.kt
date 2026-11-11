@@ -110,7 +110,7 @@ class YtDataSource : BaseDataSource(true) {
     private fun check(resp: Response, spec: DataSpec) {
         if (!resp.isSuccessful) {
             val code = resp.code
-            android.util.Log.w("Kestrel", "DIAG media HTTP $code itag=${Regex("[?&]itag=([0-9]+)").find(url)?.groupValues?.get(1)} sig=${url.contains("&sig=")} pot=${url.contains("&pot=")} c=${Regex("[?&]c=([A-Z_]+)").find(url)?.groupValues?.get(1)} mime=${Regex("[?&]mime=([^&]+)").find(url)?.groupValues?.get(1)}")
+            android.util.Log.w("Kestrel", "media HTTP $code itag=${Regex("[?&]itag=([0-9]+)").find(url)?.groupValues?.get(1)}")
             val msg = resp.message
             resp.close()
             throw HttpDataSource.InvalidResponseCodeException(
