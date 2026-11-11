@@ -35,19 +35,24 @@ object WebHost {
   window.kestrelWant = true;
   window.kestrelLoop = setInterval(function(){
     var v = document.querySelector('video');
-    window.kestrelN = (window.kestrelN || 0) + 1;
-    if (window.kestrelN % 10 == 1) console.log('KSTAT vis=' + document.visibilityState + ' video=' + !!v + (v ? ' t=' + v.currentTime + ' rs=' + v.readyState + ' paused=' + v.paused + ' src=' + (v.src || '').slice(0, 30) + ' err=' + (v.error && v.error.code) : '') + ' url=' + location.href.slice(0, 60));
     if (!v) return;
     if (!v.kestrelHooked) {
       v.kestrelHooked = true;
       v.addEventListener('ended', function(){ KWeb.ended(); });
     }
     if (v.muted) { v.muted = false; var m = document.querySelector('.ytp-unmute,.ytmUnmuteButton,ytm-unmute-button,button[aria-label*="nmute"]'); m && m.click(); }
-    if (window.kestrelWant && v.paused && !v.ended && v.play) { var pr = v.play(); pr && pr.catch && pr.catch(function(e){ console.log('KPLAY ' + e); }); }
+    if (window.kestrelWant && v.paused && !v.ended && v.play) { var pr = v.play(); pr && pr.catch && pr.catch(function(){}); }
     if (!window.kestrelWant && !v.paused) v.pause();
     KWeb.progress(Math.round(v.currentTime * 1000), Math.round((v.duration || 0) * 1000), !v.paused);
   }, 500);
 })();
+"""
+
+    // YouTube's page pauses when it thinks it's hidden; keep it "visible" so background play works.
+    private const val KEEP_VISIBLE_JS = """
+Object.defineProperty(document, 'hidden', { get: function(){ return false; } });
+Object.defineProperty(document, 'visibilityState', { get: function(){ return 'visible'; } });
+document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropagation(); }, true);
 """
 
     private val main = Handler(Looper.getMainLooper())
@@ -65,6 +70,10 @@ object WebHost {
     /** Called on the main thread with (positionMs, durationMs). */
     var onProgress: ((Long, Long) -> Unit)? = null
     var onEnded: (() -> Unit)? = null
+    /** Called on the main thread when play/pause, duration or the video changes. */
+    var onChange: (() -> Unit)? = null
+
+    private fun changed() = main.post { onChange?.invoke() }
 
     @SuppressLint("SetJavaScriptEnabled")
     private fun create(ctx: Context): WebView {
@@ -73,7 +82,10 @@ object WebHost {
             cm.setCookie("https://m.youtube.com", "$k=$v; Domain=.youtube.com; Path=/; Secure")
         }
         cm.flush()
-        return WebView(ctx).apply {
+        // Ignore "window hidden": otherwise Chromium pauses the video when the app goes to the background.
+        return object : WebView(ctx) {
+            override fun onWindowVisibilityChanged(visibility: Int) = super.onWindowVisibilityChanged(android.view.View.VISIBLE)
+        }.apply {
             cm.setAcceptThirdPartyCookies(this, true)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
@@ -82,10 +94,7 @@ object WebHost {
             setBackgroundColor(android.graphics.Color.BLACK)
             keepScreenOn = true
             webChromeClient = object : WebChromeClient() {
-                override fun onConsoleMessage(m: android.webkit.ConsoleMessage): Boolean {
-                    android.util.Log.d("WebHost", m.message().take(300))
-                    return true
-                }
+                override fun onConsoleMessage(m: android.webkit.ConsoleMessage) = true // keep YouTube's page logs out of logcat
             }
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
@@ -95,36 +104,57 @@ object WebHost {
             addJavascriptInterface(object {
                 @JavascriptInterface
                 fun progress(pos: Double, dur: Double, isPlaying: Boolean) {
+                    val stateChanged = isPlaying != playing || dur.toLong() != durationMs
                     positionMs = pos.toLong()
                     durationMs = dur.toLong()
                     playing = isPlaying
                     main.post { onProgress?.invoke(positionMs, durationMs) }
+                    if (stateChanged) changed()
                 }
                 @JavascriptInterface
                 fun ended() {
                     main.post { onEnded?.invoke() }
                 }
             }, "KWeb")
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
+                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(this, KEEP_VISIBLE_JS, setOf("https://m.youtube.com"))
+            }
         }
     }
 
     /** Starts [id] in the web player (creates the WebView on first use). */
     fun play(ctx: Context, id: String, startSec: Long) {
-        val w = view ?: create(ctx.applicationContext).also { view = it }
+        val w = view ?: create(ctx.applicationContext).also { view = it; park(it) }
         videoId = id
         positionMs = startSec * 1000
         durationMs = 0
         playing = true
         val t = if (startSec > 0) "&t=${startSec}s" else ""
         w.loadUrl("https://m.youtube.com/watch?v=$id$t")
+        changed()
     }
 
-    fun resume() = js("window.kestrelWant=true;var v=document.querySelector('video');v&&v.play();").also { playing = true }
-    fun pause() = js("window.kestrelWant=false;var v=document.querySelector('video');v&&v.pause();").also { playing = false }
-    fun seekTo(ms: Long) = js("var v=document.querySelector('video');if(v)v.currentTime=${ms / 1000.0};")
+    fun resume() = js("window.kestrelWant=true;var v=document.querySelector('video');v&&v.play();").also { playing = true; changed() }
+    fun pause() = js("window.kestrelWant=false;var v=document.querySelector('video');v&&v.pause();").also { playing = false; changed() }
+    fun seekTo(ms: Long) = js("var v=document.querySelector('video');if(v)v.currentTime=${ms / 1000.0};").also { positionMs = ms; changed() }
 
     private fun js(code: String) {
         main.post { view?.evaluateJavascript("(function(){$code})();", null) }
+    }
+
+    /**
+     * 1-pixel spot in the activity that holds the WebView while no screen shows it.
+     * A WebView that isn't in a window stops its media, so this keeps playback going.
+     */
+    var parking: ViewGroup? = null
+        set(value) {
+            field = value
+            view?.let { if (it.parent == null) park(it) }
+        }
+
+    private fun park(w: WebView) {
+        (w.parent as? ViewGroup)?.removeView(w)
+        parking?.addView(w, ViewGroup.LayoutParams(1, 1))
     }
 
     /** Puts the WebView into [parent] (moving it out of any old one). */
@@ -136,7 +166,14 @@ object WebHost {
     }
 
     fun detach(parent: ViewGroup) {
-        view?.let { if (it.parent === parent) parent.removeView(it) }
+        view?.let { if (it.parent === parent) park(it) }
+    }
+
+    /** Called when the activity holding [p] goes away. */
+    fun unpark(p: ViewGroup) {
+        if (parking !== p) return
+        view?.let { if (it.parent === p) p.removeView(it) }
+        parking = null
     }
 
     /** Stops playback and frees the WebView. */
@@ -145,6 +182,7 @@ object WebHost {
         view = null
         videoId = null
         playing = false
+        changed()
         (w.parent as? ViewGroup)?.removeView(w)
         w.stopLoading()
         w.loadUrl("about:blank")

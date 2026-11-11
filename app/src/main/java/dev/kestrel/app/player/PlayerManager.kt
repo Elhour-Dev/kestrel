@@ -285,22 +285,7 @@ object PlayerManager {
         if (Streams.linksBlocked()) {
             // This network blocks our links: go straight to the web player, fetch details on the side.
             startWeb(video, resumeSec(video))
-            loadJob = scope.launch {
-                Graph.store.addHistory(video)
-                reportHistory(video.id)
-                loadSegments(video.id)
-                val r = runCatching { Streams.fromNewPipe(NpRepo.stream(video.id)) }.getOrNull()
-                if (r == null) {
-                    // Details lookup failed on this network: at least get title and channel.
-                    if (video.title.isBlank()) basicInfo(video.id)?.let { (title, channel) ->
-                        _now.update { if (it?.video?.id == video.id) it.copy(video = it.video.copy(title = title, channelName = channel)) else it }
-                    }
-                    return@launch
-                }
-                val v = r.video.copy(thumbnail = video.thumbnail.ifBlank { r.video.thumbnail })
-                val details = r.copy(video = v, videoOnly = emptyList(), audio = emptyList(), muxed = emptyList(), hls = null)
-                _now.update { if (it?.video?.id == video.id) it.copy(video = v, resolved = details) else it }
-            }
+            loadJob = scope.launch { webDetails(video) }
             return
         }
         WebHost.release()
@@ -317,10 +302,12 @@ object PlayerManager {
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w("Kestrel", "resolve failed for ${video.id}", e)
+                if (unplayable(e)) {
+                    _now.update { it?.copy(loading = false, error = dev.kestrel.app.ui.friendlyError(e)) }
+                    return@launch
+                }
                 useWebPlayer()
-                Graph.store.addHistory(video)
-                reportHistory(video.id)
-                loadSegments(video.id)
+                webDetails(video)
             }
         }
     }
@@ -455,6 +442,36 @@ object PlayerManager {
     private fun startWeb(video: Video, startSec: Long) {
         _now.update { it?.copy(loading = false, error = null, web = true) }
         WebHost.play(appContext, video.id, startSec)
+        startService()
+    }
+
+    /** Videos YouTube's own player can't play either: show the reason instead of trying the web player. */
+    private fun unplayable(e: Throwable): Boolean {
+        val chain = generateSequence(e) { it.cause }.toList()
+        return chain.any {
+            it is org.schabi.newpipe.extractor.exceptions.PrivateContentException ||
+                it is org.schabi.newpipe.extractor.exceptions.PaidContentException ||
+                it is org.schabi.newpipe.extractor.exceptions.GeographicRestrictionException ||
+                (it is org.schabi.newpipe.extractor.exceptions.AgeRestrictedContentException && !Graph.account.isSignedIn)
+        }
+    }
+
+    /** History, SponsorBlock and video details (title, description, related) while the web player plays. */
+    private suspend fun webDetails(video: Video) {
+        Graph.store.addHistory(video)
+        reportHistory(video.id)
+        loadSegments(video.id)
+        val r = runCatching { Streams.fromNewPipe(NpRepo.stream(video.id)) }.getOrNull()
+        if (r == null) {
+            // Details lookup failed on this network: at least get title and channel.
+            if (video.title.isBlank()) basicInfo(video.id)?.let { (title, channel) ->
+                _now.update { if (it?.video?.id == video.id) it.copy(video = it.video.copy(title = title, channelName = channel)) else it }
+            }
+            return
+        }
+        val v = r.video.copy(thumbnail = video.thumbnail.ifBlank { r.video.thumbnail })
+        val details = r.copy(video = v, videoOnly = emptyList(), audio = emptyList(), muxed = emptyList(), hls = null)
+        _now.update { if (it?.video?.id == video.id) it.copy(video = v, resolved = details) else it }
     }
 
     /** Title and channel name from YouTube's public oEmbed endpoint. */

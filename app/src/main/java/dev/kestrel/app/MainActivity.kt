@@ -18,6 +18,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import dev.kestrel.app.player.PlayerManager
+import dev.kestrel.app.player.WebHost
 import dev.kestrel.app.player.PopupService
 import dev.kestrel.app.ui.KestrelRoot
 import dev.kestrel.app.ui.theme.KestrelTheme
@@ -47,6 +48,14 @@ class MainActivity : ComponentActivity() {
                 KestrelRoot(this)
             }
         }
+        addContentView(android.widget.FrameLayout(this).also { webParking = it; WebHost.parking = it }, android.view.ViewGroup.LayoutParams(1, 1))
+    }
+
+    private var webParking: android.view.ViewGroup? = null
+
+    override fun onDestroy() {
+        webParking?.let { WebHost.unpark(it) }
+        super.onDestroy()
     }
 
     override fun onNewIntent(intent: Intent) {

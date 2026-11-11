@@ -24,7 +24,7 @@ fun friendlyError(e: Throwable): String {
         root.any { it.javaClass.simpleName.contains("NotBot") || it.message?.contains("not a bot") == true } ->
             "YouTube is blocking video on this network (common with VPN servers). Try another VPN server or try again later."
         has(ReCaptchaException::class.java) -> "YouTube is rate-limiting this network. Wait a bit and try again."
-        has(AgeRestrictedContentException::class.java) -> "This video is age-restricted."
+        has(AgeRestrictedContentException::class.java) -> "This video is age-restricted. Sign in with Google to watch it."
         has(GeographicRestrictionException::class.java) -> "This video isn't available in your country."
         has(PrivateContentException::class.java) -> "This video is private."
         has(PaidContentException::class.java) -> "This video needs a paid membership."

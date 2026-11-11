@@ -83,9 +83,11 @@ object Streams {
     fun linksBlocked() = System.currentTimeMillis() < blockedUntil
 
     suspend fun resolve(videoId: String): Resolved {
+        if (linksBlocked()) throw java.io.IOException("This network blocks stream links")
         // Signed-in links get through YouTube's bot check on networks where signed-out ones don't.
         val signedIn = runCatching { dev.kestrel.app.Graph.account.session.value != null }.getOrDefault(false)
-        if (preferFallback || signedIn) {
+        val fallbackFirst = preferFallback || signedIn
+        if (fallbackFirst) {
             runCatching { return Fallback.resolve(videoId) }
             if (linksBlocked()) throw java.io.IOException("This network blocks stream links")
         }
@@ -94,6 +96,7 @@ object Streams {
             if (!linksWork(r)) throw java.io.IOException("Stream links refused")
             r
         } catch (e: Exception) {
+            if (fallbackFirst || linksBlocked()) throw e
             try {
                 Fallback.resolve(videoId)
             } catch (_: Exception) {
@@ -102,13 +105,26 @@ object Streams {
         }
     }
 
-    /** Fetches the first few KB of one link to check YouTube accepts it. */
+    /** Checks YouTube really serves one of [r]'s links. */
     private suspend fun linksWork(r: Resolved): Boolean = withContext(Dispatchers.IO) {
         if (r.video.isLive || !JsSolver.available) return@withContext true
         val url = r.pickAudio()?.url ?: r.pickVideo(360)?.url ?: return@withContext true
-        runCatching {
-            Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(url, 0, 4095, 1)).execute().use { it.isSuccessful }
-        }.getOrDefault(true) // network trouble: let the player retry instead
+        runCatching { linkWorks(url) }.getOrDefault(true) // network trouble: let the player retry instead
+    }
+
+    /**
+     * True when YouTube serves [url]: fetches the start and a range past 1 MB.
+     * Some networks (flagged VPN IPs) get only the first ~1 MB, then HTTP 403; that marks links as blocked.
+     */
+    fun linkWorks(url: String): Boolean {
+        val start = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(url, 0, 4095, 1)).execute().use { it.code }
+        if (start !in 200..299) return false
+        val past = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(url, 1_048_576, 1_052_671, 2)).execute().use { it.code }
+        if (past == 403) {
+            blockedUntil = System.currentTimeMillis() + BLOCK_MS
+            return false
+        }
+        return true
     }
 
     @Volatile private var npCheck: Pair<Long, Boolean>? = null
@@ -168,7 +184,7 @@ object Streams {
             channelAvatar = NpRepo.smallImage(info.uploaderAvatars),
             subscribers = info.uploaderSubscriberCount,
             likes = info.likeCount,
-            uploadDate = info.textualUploadDate,
+            uploadDate = runCatching { info.uploadDate?.offsetDateTime()?.toLocalDate()?.format(java.time.format.DateTimeFormatter.ofLocalizedDate(java.time.format.FormatStyle.MEDIUM)) }.getOrNull() ?: info.textualUploadDate,
             videoOnly = info.videoOnlyStreams.filter(progressive).map {
                 StreamOption(it.content, ext(it.format), it.height, it.codec.orEmpty(), it.bitrate, it.itag, it.fps)
             },
@@ -252,8 +268,7 @@ object Fallback {
         if (session != null) {
             val ds = session.dataSyncId.substringBefore("||").ifBlank { null }
             val playerPot = dev.kestrel.app.player.PoTokens.mint(videoId)
-            val captured = dev.kestrel.app.player.PotCapture.get(session, videoId)
-            val streamPot = captured ?: ds?.let { dev.kestrel.app.player.PoTokens.mint(it) }
+            val streamPot = ds?.let { dev.kestrel.app.player.PoTokens.mint(it) }
             for (c in authClients) {
                 try {
                     val r = tryClient(c, videoId, session.visitorData.ifBlank { freshVisitor() }, sts, playerPot, if (c.web) streamPot else null, session)
@@ -261,6 +276,7 @@ object Fallback {
                     return@withContext r
                 } catch (e: Exception) {
                     android.util.Log.w("Kestrel", "signed-in client ${c.name} failed: ${e.message}")
+                    if (Streams.linksBlocked()) throw e // no client gets through on this network
                     lastError = e
                 }
             }
@@ -280,6 +296,7 @@ object Fallback {
                     return@withContext r
                 } catch (e: Exception) {
                     android.util.Log.w("Kestrel", "backup client ${c.name} failed (round $round): ${e.message}")
+                    if (Streams.linksBlocked()) throw e
                     lastError = e
                 }
             }
@@ -383,19 +400,22 @@ object Fallback {
         val hls = r.at("streamingData").str("hlsManifestUrl")
         val hlsOnly = audio.isEmpty() && hls != null
         if (hlsOnly) {
-            val code = Http.client.newCall(Request.Builder().url(hls!!).header("User-Agent", c.ua).build()).execute().use { it.code }
-            if (code !in 200..299) error("${c.name}: HLS refused (HTTP $code)")
+            // The manifest can load while the video segments are refused: check one segment too.
+            fun get(u: String) = Http.client.newCall(Request.Builder().url(u).header("User-Agent", c.ua).build()).execute().use { if (it.isSuccessful) it.body.string() else null }
+            val master = get(hls!!) ?: error("${c.name}: HLS refused")
+            val segment = master.lineSequence().firstOrNull { it.startsWith("http") }?.let(::get)
+                ?.lineSequence()?.firstOrNull { it.startsWith("http") }
+            if (segment != null) {
+                val seg = Http.client.newCall(Request.Builder().url(segment).header("User-Agent", c.ua).header("Range", "bytes=0-4095").build()).execute().use { it.code }
+                if (seg == 403) {
+                    Streams.blockedUntil = System.currentTimeMillis() + Streams.BLOCK_MS
+                    error("${c.name}: HLS segments refused (HTTP 403)")
+                }
+            }
         } else if (!live) {
             // Make sure the links really download before trusting this client.
             val probe = audio.firstOrNull { it.ext == "m4a" } ?: audio.firstOrNull() ?: error("${c.name}: no audio (fmts=${raw.size} urls=${raw.count { it.str("url") != null }} cipher=${raw.count { it.str("signatureCipher") != null }} sabr=${r.at("streamingData").str("serverAbrStreamingUrl") != null})")
-            val code = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(probe.url, 0, 4095, 1)).execute().use { it.code }
-            if (code !in 200..299) error("${c.name}: stream links refused (HTTP $code, ciphered=${raw.count { it.str("signatureCipher") != null }}/${raw.size})")
-            // Some networks only get the first ~1 MB of each link, then 403. Check a range past that.
-            val past = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(probe.url, 1_048_576, 1_052_671, 2)).execute().use { it.code }
-            if (past == 403) {
-                Streams.blockedUntil = System.currentTimeMillis() + Streams.BLOCK_MS
-                error("${c.name}: stream links stop after 1 MB (HTTP 403)")
-            }
+            if (!Streams.linkWorks(probe.url)) error("${c.name}: stream links refused")
         } else if (hls == null) error("${c.name}: no live stream")
         val v = Video(
             id = videoId,

@@ -5,12 +5,10 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import dev.kestrel.app.Graph
 import dev.kestrel.app.data.innertube.SessionExpiredException
-import dev.kestrel.app.data.net.Http
 import dev.kestrel.app.data.newpipe.NpRepo
 import dev.kestrel.app.data.streams.Fallback
 import dev.kestrel.app.data.streams.Resolved
 import dev.kestrel.app.data.streams.Streams
-import dev.kestrel.app.player.YtDataSource
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +29,7 @@ object Health {
     /** Long-lived scope so checks can outlive the startup screen. */
     val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
 
-    private const val TEST_VIDEO = "jNQXAC9IVRw"
+    private const val TEST_VIDEO = "M7lc1UVf-VE" // audio > 1 MB, so the 1 MB cap shows up
 
     private val _results = MutableStateFlow<Map<Feature, CheckResult>>(emptyMap())
     val results: StateFlow<Map<Feature, CheckResult>> get() = _results
@@ -95,10 +93,10 @@ object Health {
         return CheckResult(Feature.Search, false, "Search isn't working right now. Library and downloads still work.")
     }
 
+    /** Same link check the player uses (start and past 1 MB). */
     private fun canFetch(r: Resolved): Boolean {
         val url = r.pickAudio()?.url ?: r.pickVideo(360)?.url ?: return r.hls != null
-        val req = YtDataSource.rangedRequest(url, 0, 4095, 1)
-        return Http.client.newCall(req).execute().use { it.isSuccessful && it.body.bytes().isNotEmpty() }
+        return Streams.linkWorks(url)
     }
 
     private suspend fun checkStreams(): CheckResult {
@@ -107,8 +105,10 @@ object Health {
             Streams.preferFallback = false
             return CheckResult(Feature.Streams, true, "OK")
         }
+        if (Streams.linksBlocked()) return webPlayer()
         heal()
         if (runCatching { np() }.getOrDefault(false)) return CheckResult(Feature.Streams, true, "Fixed after refresh")
+        if (Streams.linksBlocked()) return webPlayer()
         if (runCatching { canFetch(Fallback.resolve(TEST_VIDEO)) }.getOrDefault(false)) {
             Streams.preferFallback = true
             return CheckResult(Feature.Streams, true, "Using backup video source")

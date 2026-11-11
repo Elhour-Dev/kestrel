@@ -8,11 +8,15 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import dev.kestrel.app.MainActivity
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 /** Keeps playback alive in the background and shows the media notification. */
 @UnstableApi
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
+    private val web = WebSessionPlayer()
+    private val scope = kotlinx.coroutines.MainScope()
 
     override fun onCreate() {
         super.onCreate()
@@ -37,19 +41,27 @@ class PlaybackService : MediaSessionService() {
                 .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
-        session = MediaSession.Builder(this, wrapped).setSessionActivity(open).build()
+        session = MediaSession.Builder(this, wrapped).setSessionActivity(open).build().also { addSession(it) }
+        // The session follows whichever player is in use: ours, or YouTube's web player.
+        WebHost.onChange = { web.refresh() }
+        scope.launch {
+            PlayerManager.now.collect { np ->
+                val p = if (np?.web == true) web else wrapped
+                session?.let { if (it.player !== p) it.player = p }
+                web.refresh()
+            }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val p = PlayerManager.player
-        if (!p.playWhenReady || p.mediaItemCount == 0) {
-            stopSelf()
-        }
+        if (PlayerManager.now.value == null || !PlayerManager.isPlayingOrWill()) stopSelf()
     }
 
     override fun onDestroy() {
+        scope.cancel()
+        WebHost.onChange = null
         session?.release()
         session = null
         super.onDestroy()

@@ -42,7 +42,6 @@ class KestrelApp : Application(), SingletonImageLoader.Factory {
         NpRepo.init(Graph.settings.region.value, Graph.settings.language.value)
         dev.kestrel.app.player.PoTokens.install(this)
         dev.kestrel.app.player.JsSolver.install(this)
-        dev.kestrel.app.player.PotCapture.install(this)
         createChannels()
         PlayerManager.init(this)
         Graph.downloads = Downloads(this)
