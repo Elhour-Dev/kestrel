@@ -71,6 +71,8 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
     /** Called on the main thread with (positionMs, durationMs). */
     var onProgress: ((Long, Long) -> Unit)? = null
     var onEnded: (() -> Unit)? = null
+    /** Called on the main thread when the WebView's renderer died and the WebView was released. */
+    var onCrash: (() -> Unit)? = null
     /** Called on the main thread when play/pause, duration or the video changes. */
     var onChange: (() -> Unit)? = null
 
@@ -100,6 +102,11 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) {
                     view.evaluateJavascript(PAGE_JS, null)
+                }
+                // The renderer died (e.g. out of memory): drop the WebView instead of crashing the app.
+                override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean {
+                    main.post { release(); onCrash?.invoke() }
+                    return true
                 }
             }
             addJavascriptInterface(object {

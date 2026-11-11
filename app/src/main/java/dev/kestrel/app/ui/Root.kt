@@ -273,7 +273,7 @@ private fun MiniPlayer(onOpen: () -> Unit) {
                     AsyncImage(np.video.thumbnail, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
                 }
                 Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                    Text(np.video.title.ifBlank { "Loading…" }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
+                    Text(np.video.title.ifBlank { if (np.error != null) "Video unavailable" else "Loading…" }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
                     Text(np.error ?: np.video.channelName, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall,
                         color = if (np.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                 }

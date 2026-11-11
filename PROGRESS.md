@@ -13,8 +13,10 @@ Repo: github.com/Elhour-Dev/kestrel (private for now; must be public for in-app 
   signed in = SABR-only (no direct links). Browsing, account, comments all work.
 - App handles it: clear message, no crash. Playback code paths verified only on PC earlier (12:15) when IP was clean.
 
-## Audit + playback fix (2026-11-11 evening) — DONE, testing finished
+## Audit + playback fix (2026-11-11 evening) — DONE (build 207 = release candidate)
 Tested on phone (build 201): Shorts then next video OK (video only), SponsorBlock 'Skipped Intro' OK in web mode, signed in OK. Downloads: 403 on this VPN -> clear message 'Blocked by YouTube. Try another network.'
+Also fixed after review: health check only uses web player on timeout; 'blocked' message for downloads; 40 s cap + clear message when YouTube is unreachable (no VPN in China); 'Video unavailable' title; WebView renderer crash no longer kills the app.
+Not tested: no-VPN timeout message on build 207 (needs VPN off), signed-out, wifi without a hijacked DNS.
 Open: web page sometimes shows YouTube 'Something went wrong' mid-video on this VPN (not detected by the app); no next/prev in web notification.
 
 Root cause (proven): YouTube blocks this VPN's IP for direct stream links. yt-dlp 2026.10.26 on the PC

@@ -224,7 +224,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp).animateContentSize()) {
-                Text(v.title.ifBlank { "Loading…" }, style = MaterialTheme.typography.titleMedium, maxLines = if (expanded) 10 else 2, overflow = TextOverflow.Ellipsis,
+                Text(v.title.ifBlank { if (np.error != null) "Video unavailable" else "Loading…" }, style = MaterialTheme.typography.titleMedium, maxLines = if (expanded) 10 else 2, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.clickable { expanded = !expanded })
                 val meta = listOfNotNull(
                     v.views.takeIf { it >= 0 }?.let { "${formatCount(it)} views" },

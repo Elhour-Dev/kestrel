@@ -108,6 +108,9 @@ object PlayerManager {
         })
         WebHost.onProgress = { pos, _ -> onWebProgress(pos) }
         WebHost.onEnded = { onWebEnded() }
+        WebHost.onCrash = {
+            _now.update { if (it?.web == true) it.copy(web = false, loading = false, error = "The video player stopped. Try again.") else it }
+        }
         handler.post(ticker)
     }
 
@@ -291,7 +294,11 @@ object PlayerManager {
         WebHost.release()
         loadJob = scope.launch {
             try {
-                val r = Streams.resolve(video.id)
+                // If YouTube can't be reached at all, requests hang: give up with a clear message.
+                val r = kotlinx.coroutines.withTimeoutOrNull(40_000) { Streams.resolve(video.id) } ?: run {
+                    _now.update { it?.copy(loading = false, error = "The connection timed out. Check your network or VPN and try again.") }
+                    return@launch
+                }
                 val v = r.video.copy(thumbnail = video.thumbnail.ifBlank { r.video.thumbnail })
                 _now.update { it?.copy(video = v, resolved = r, loading = false) }
                 rebuild(r, keepPosition = false)
@@ -304,6 +311,9 @@ object PlayerManager {
                 android.util.Log.w("Kestrel", "resolve failed for ${video.id}", e)
                 if (unplayable(e)) {
                     _now.update { it?.copy(loading = false, error = dev.kestrel.app.ui.friendlyError(e)) }
+                    if (video.title.isBlank()) basicInfo(video.id)?.let { (title, channel) ->
+                        _now.update { if (it?.video?.id == video.id) it.copy(video = it.video.copy(title = title, channelName = channel)) else it }
+                    }
                     return@launch
                 }
                 useWebPlayer()
@@ -464,7 +474,9 @@ object PlayerManager {
         loadSegments(video.id)
         val res = runCatching { Streams.fromNewPipe(NpRepo.stream(video.id)) }
         res.exceptionOrNull()?.let { e ->
-            if (unplayable(e) && _now.value?.video?.id == video.id) {
+            // Unplayable, or YouTube can't be reached at all (the web page would just stay blank): show the error.
+            val offline = generateSequence(e) { it.cause }.any { it is java.io.IOException }
+            if ((unplayable(e) || offline) && _now.value?.video?.id == video.id) {
                 WebHost.release()
                 _now.update { it?.copy(web = false, loading = false, error = dev.kestrel.app.ui.friendlyError(e)) }
                 return

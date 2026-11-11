@@ -200,6 +200,8 @@ private fun LoginWebView(desktop: Boolean, onLoading: (Boolean) -> Unit, onDone:
             cm.setAcceptThirdPartyCookies(this, true)
             webViewClient = object : WebViewClient() {
                 override fun onPageStarted(view: WebView, url: String?, favicon: android.graphics.Bitmap?) = onLoading(true)
+                // Don't crash the app if the WebView's renderer dies; the user can just retry.
+                override fun onRenderProcessGone(view: WebView, detail: android.webkit.RenderProcessGoneDetail): Boolean = true
                 override fun onPageFinished(view: WebView, url: String?) {
                     onLoading(false)
                     val u = url ?: return
