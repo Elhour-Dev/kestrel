@@ -28,6 +28,11 @@ Repo: github.com/Elhour-Dev/kestrel (private for now; must be public for in-app 
 - RESULT (16:30, versionCode 179): pot now captured on the SAME video (PotCapture.get(session, videoId)) -> still
   all 403 past 1MB. Also a 2nd small request on the same link (audio2) gets 403. Token is not the fix here.
   NEXT: WebView player fallback (auto-switch when own player gets 403).
+- DONE (16:50, versionCode 185): WebView fallback WORKS on phone (new VPN too). `ui/screens/WebPlayer.kt`,
+  `NowPlaying.web` flag, `PlayerManager.useWebPlayer()`. Video shows, plays, unmuted.
+  Fixes found: video had height 0 with 100vh CSS -> use position:fixed + 100%; YouTube autoplays muted -> unmute in JS.
+  TODO: switch takes ~50 s (own player tries all clients + retry first) -> make it faster;
+  "Web player" label is clipped; check controls/seek on tap; KSTAT TEMP DIAG log in WebPlayer.kt to remove.
 - If nothing works: fallback plan = play through YouTube's mobile web player in a WebView (it plays fine here).
 - TEMP "DIAG" logging in Streams.kt, YtDataSource.kt, PotCapture.kt must be removed before release.
 - Phone screen timeout set to max for testing; restore with `adb shell settings put system screen_off_timeout 60000`

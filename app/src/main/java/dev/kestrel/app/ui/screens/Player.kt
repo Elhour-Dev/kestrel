@@ -126,6 +126,13 @@ fun PlayerScreen(activity: MainActivity) {
 @Composable
 private fun VideoSurface(np: NowPlaying, activity: MainActivity, modifier: Modifier) {
     val inPip = MainActivity.Ui.inPip
+    if (np.web) {
+        Box(modifier) {
+            WebPlayer(np.video.id, np.webStartSec, Modifier.fillMaxSize())
+            if (!inPip) Text("Web player", color = Color.White.copy(alpha = 0.6f), modifier = Modifier.align(Alignment.TopEnd).padding(6.dp))
+        }
+        return
+    }
     Box(modifier) {
         AndroidView(
             factory = { ctx ->

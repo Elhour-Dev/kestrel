@@ -51,6 +51,9 @@ data class NowPlaying(
     val audioOnly: Boolean = false,
     val localPath: String? = null,
     val segments: List<SponsorSegment> = emptyList(),
+    /** Our links are blocked: play in YouTube's own web player instead. */
+    val web: Boolean = false,
+    val webStartSec: Long = 0,
 )
 
 /** Owns the single ExoPlayer used by the screen, background service, PiP and the popup. */
@@ -246,7 +249,7 @@ object PlayerManager {
                 throw e
             } catch (e: Exception) {
                 android.util.Log.w("Kestrel", "resolve failed for ${video.id}", e)
-                _now.update { it?.copy(loading = false, error = friendlyError(e)) }
+                useWebPlayer()
             }
         }
     }
@@ -355,11 +358,19 @@ object PlayerManager {
                     player.seekTo(pos)
                     player.playWhenReady = true
                 } catch (e: Exception) {
-                    _now.update { it?.copy(error = "Playback failed: ${error.errorCodeName}") }
+                    useWebPlayer()
                 }
             }
         } else {
-            _now.update { it?.copy(error = "Playback failed (${error.errorCodeName}). Tap retry.") }
+            useWebPlayer()
         }
+    }
+
+    /** Switch the current video to the web player (keeps the position). */
+    private fun useWebPlayer() {
+        val pos = (player.currentPosition / 1000).coerceAtLeast(0)
+        player.stop()
+        android.util.Log.w("Kestrel", "switching to web player for ${_now.value?.video?.id}")
+        _now.update { it?.copy(loading = false, error = null, web = true, webStartSec = pos) }
     }
 }
