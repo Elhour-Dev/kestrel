@@ -120,7 +120,7 @@ object Streams {
         }
         return Resolved(
             video = video,
-            description = info.description?.content.orEmpty(),
+            description = NpRepo.plain(info.description?.content),
             channelAvatar = NpRepo.smallImage(info.uploaderAvatars),
             subscribers = info.uploaderSubscriberCount,
             likes = info.likeCount,

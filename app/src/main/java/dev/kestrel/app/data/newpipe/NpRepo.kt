@@ -43,6 +43,15 @@ object NpRepo {
     }
 
     // ---------- mapping ----------
+    /** NewPipe gives HTML for comments and descriptions; show plain text with line breaks. */
+    fun plain(html: String?): String {
+        if (html.isNullOrEmpty()) return ""
+        if (!html.contains('<') && !html.contains('&')) return html
+        return runCatching {
+            androidx.core.text.HtmlCompat.fromHtml(html, androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY)?.toString()?.trim()
+        }.getOrNull() ?: html
+    }
+
     fun bestImage(images: List<Image>?): String? =
         images?.maxByOrNull { it.height.takeIf { h -> h > 0 } ?: 1 }?.url
 
@@ -143,7 +152,7 @@ object NpRepo {
         ChannelData(
             Channel(id, info.name, smallImage(info.avatars), info.subscriberCount),
             bestImage(info.banners),
-            info.description.orEmpty(),
+            plain(info.description),
             tabs,
         )
     }
@@ -191,7 +200,7 @@ object NpRepo {
         author = c.uploaderName.orEmpty(),
         authorAvatar = smallImage(c.uploaderAvatars),
         authorChannelId = channelId(c.uploaderUrl),
-        text = c.commentText?.content.orEmpty(),
+        text = plain(c.commentText?.content),
         likes = c.textualLikeCount.orEmpty(),
         published = c.textualUploadDate.orEmpty(),
         replyCount = c.replyCount.coerceAtLeast(0),

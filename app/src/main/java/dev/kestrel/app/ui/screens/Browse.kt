@@ -127,7 +127,7 @@ fun HealthBanner() {
 fun HomeScreen() {
     val accountState by Graph.account.state.collectAsStateWithLifecycle()
     val signedIn = accountState == AccountState.SignedIn
-    val kiosks = remember { runCatching { NpRepo.kioskIds() }.getOrDefault(emptyList()) }
+    val kiosks = remember { runCatching { NpRepo.kioskIds() }.getOrDefault(emptyList()).sortedBy { if (it.equals("Trending", true)) 0 else 1 } }
     var source by remember(signedIn) { mutableStateOf(if (signedIn) "foryou" else kiosks.firstOrNull() ?: "") }
     Column {
         MainTopBar("Kestrel")

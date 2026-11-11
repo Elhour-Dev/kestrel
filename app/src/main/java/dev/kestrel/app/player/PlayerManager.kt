@@ -137,7 +137,8 @@ object PlayerManager {
 
     private fun startService() {
         runCatching {
-            ContextCompat.startForegroundService(appContext, Intent(appContext, PlaybackService::class.java))
+            // Plain start: Media3 promotes the service to foreground itself once playback begins.
+            appContext.startService(Intent(appContext, PlaybackService::class.java))
         }
     }
 
@@ -232,7 +233,6 @@ object PlayerManager {
         _now.value = NowPlaying(video, loading = true, quality = Graph.settings.defaultQuality.value, audioOnly = audioOnly)
         player.stop()
         player.clearMediaItems()
-        startService()
         loadJob = scope.launch {
             try {
                 val r = Streams.resolve(video.id)
@@ -327,6 +327,7 @@ object PlayerManager {
         player.prepare()
         if (keepPosition) player.seekTo(pos) else resume(r.video.id, r.video.durationSec)
         player.playWhenReady = playing
+        startService()
     }
 
     private fun resume(id: String, durationSec: Long) {
