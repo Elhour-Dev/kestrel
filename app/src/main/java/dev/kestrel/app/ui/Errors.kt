@@ -21,6 +21,8 @@ fun friendlyError(e: Throwable): String {
         has(NotSignedInException::class.java) -> "Sign in with Google to use this."
         has(UnknownHostException::class.java) -> "No internet connection."
         has(SocketTimeoutException::class.java) -> "The connection timed out. Try again."
+        root.any { it.javaClass.simpleName.contains("NotBot") || it.message?.contains("not a bot") == true } ->
+            "YouTube is blocking video on this network (common with VPN servers). Try another VPN server or try again later."
         has(ReCaptchaException::class.java) -> "YouTube is rate-limiting this network. Wait a bit and try again."
         has(AgeRestrictedContentException::class.java) -> "This video is age-restricted."
         has(GeographicRestrictionException::class.java) -> "This video isn't available in your country."

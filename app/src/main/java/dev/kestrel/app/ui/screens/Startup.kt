@@ -58,7 +58,6 @@ import dev.kestrel.app.system.Updater
 import dev.kestrel.app.ui.LocalNav
 import dev.kestrel.app.ui.friendlyError
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -89,19 +88,16 @@ fun StartupScreen(onDone: (String) -> Unit) {
             onDone(next)
             return@LaunchedEffect
         }
-        coroutineScope {
-            val up = async { withTimeoutOrNull(6_000) { runCatching { Updater.check() }.getOrNull() } }
-            val health = async { withTimeoutOrNull(15_000) { Health.runAll { status = it } } }
-            status = "Checking for updates…"
-            val rel = up.await()
-            if (rel != null && rel.versionCode != Graph.settings.skippedUpdate.value) {
-                update = rel
-            }
-            status = "Checking YouTube…"
-            health.await()
-            // A broken feature makes an update worth offering even if it was skipped before.
-            if (update == null && rel != null && Health.broken.isNotEmpty()) update = rel
-        }
+        // Checks run in the app scope: the screen waits a few seconds at most, and if a check
+        // is still running it keeps going in the background and updates the banner later.
+        val up = Health.scope.async { runCatching { Updater.check() }.getOrNull() }
+        val health = Health.scope.launch { runCatching { Health.runAll { } } }
+        status = "Checking YouTube and updates…"
+        withTimeoutOrNull(6_000) { health.join(); up.await() }
+        val rel = if (up.isCompleted) up.await() else withTimeoutOrNull(300) { up.await() }
+        if (rel != null && rel.versionCode != Graph.settings.skippedUpdate.value) update = rel
+        // A broken feature makes an update worth offering even if it was skipped before.
+        if (update == null && rel != null && Health.broken.isNotEmpty()) update = rel
         finished = true
     }
 

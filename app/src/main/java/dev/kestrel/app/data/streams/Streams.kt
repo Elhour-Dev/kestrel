@@ -296,7 +296,7 @@ object Fallback {
         }
 
         val audio = raw.filter { it.str("mimeType")?.startsWith("audio") == true }.mapNotNull { runCatching { opt(it) }.getOrNull() }
-        if (audio.isEmpty()) android.util.Log.w("Kestrel", "${c.name} ua=${c.ua.take(30)} streamingData keys=${(r["streamingData"] as? JsonObject)?.keys} fmt0=${raw.firstOrNull()?.keys}")
+        if (audio.isEmpty()) android.util.Log.d("Kestrel", "${c.name} ua=${c.ua.take(30)} streamingData keys=${(r["streamingData"] as? JsonObject)?.keys} fmt0=${raw.firstOrNull()?.keys}")
         val video = raw.filter { it.str("mimeType")?.startsWith("video") == true }.mapNotNull { runCatching { opt(it) }.getOrNull() }
         val live = d.str("isLive") == "true"
         val hls = r.at("streamingData").str("hlsManifestUrl")

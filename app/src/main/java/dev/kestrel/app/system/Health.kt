@@ -28,6 +28,9 @@ data class CheckResult(val feature: Feature, val ok: Boolean, val message: Strin
  * (refresh client config, clear player caches, switch to a fallback client) before giving up.
  */
 object Health {
+    /** Long-lived scope so checks can outlive the startup screen. */
+    val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+
     private const val TEST_VIDEO = "jNQXAC9IVRw"
 
     private val _results = MutableStateFlow<Map<Feature, CheckResult>>(emptyMap())
