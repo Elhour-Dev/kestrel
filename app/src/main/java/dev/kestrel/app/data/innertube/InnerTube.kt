@@ -148,6 +148,17 @@ class InnerTube(private val account: AccountStore) {
         return Page(Parser.items(r), Parser.continuation(r))
     }
 
+    /** Backup search (no login needed), used when NewPipe search breaks. */
+    suspend fun search(query: String): Page<Item> {
+        val r = post("search", buildJsonObject { put("query", query) }, auth = false)
+        return Page(Parser.items(r), Parser.continuation(r))
+    }
+
+    suspend fun searchMore(token: String): Page<Item> {
+        val r = post("search", buildJsonObject { put("continuation", token) }, auth = false)
+        return Page(Parser.items(r), Parser.continuation(r))
+    }
+
     suspend fun home() = browse("FEwhat_to_watch")
     suspend fun subscriptionsFeed() = browse("FEsubscriptions")
     suspend fun history() = browse("FEhistory")
