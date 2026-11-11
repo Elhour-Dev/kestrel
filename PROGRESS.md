@@ -13,6 +13,20 @@ Repo: github.com/Elhour-Dev/kestrel (private for now; must be public for in-app 
   signed in = SABR-only (no direct links). Browsing, account, comments all work.
 - App handles it: clear message, no crash. Playback code paths verified only on PC earlier (12:15) when IP was clean.
 
+## Playback fix in progress (2026-11-11 afternoon) — CURRENT TASK
+- Root bug: NewPipe's "n"/signature decoder is broken on the current player (Rhino error) -> every link 403.
+  Fixed with `player/JsSolver.kt` + `assets/ejs/` (yt-dlp EJS solver, run in a hidden offline WebView).
+- Signed in, MWEB client (mobile web) gives direct links here; short videos play fully on the phone.
+- Remaining: bytes past ~1 MB get 403 = streaming token (pot) rejected. Our BotGuard token AND the token
+  read from YouTube's own mobile player (`player/PotCapture.kt`, hidden WebView, fetch hook, 94-byte token)
+  both still capped. Next phone run (APK already built, versionCode 177) logs:
+  `DIAG[noPlayerPot|withPlayerPot] past1MB [asIs, noPad, pctPad, none]` -> tells if our own player-request
+  token causes the cap, or the token format. Play https://www.youtube.com/watch?v=M7lc1UVf-VE and grep "DIAG".
+- If nothing works: fallback plan = play through YouTube's mobile web player in a WebView (it plays fine here).
+- TEMP "DIAG" logging in Streams.kt, YtDataSource.kt, PotCapture.kt must be removed before release.
+- Phone screen timeout set to max for testing; restore with `adb shell settings put system screen_off_timeout 60000`
+  and `adb shell svc power stayon false`.
+
 ## Done
 - [x] Full app: browse, search, channels, playlists, shorts, comments, player, background, PiP, popup,
       SponsorBlock, downloads, settings, help, onboarding, login (WebView works), InnerTube account features

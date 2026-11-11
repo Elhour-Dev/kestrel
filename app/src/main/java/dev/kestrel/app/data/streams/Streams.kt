@@ -6,6 +6,7 @@ import dev.kestrel.app.data.innertube.thumb
 import dev.kestrel.app.data.model.Item
 import dev.kestrel.app.data.model.Video
 import dev.kestrel.app.data.net.Http
+import dev.kestrel.app.player.JsSolver
 import dev.kestrel.app.data.newpipe.NpRepo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -77,11 +78,15 @@ object Streams {
     @Volatile var preferFallback = false
 
     suspend fun resolve(videoId: String): Resolved {
-        if (preferFallback) {
+        // Signed-in links get through YouTube's bot check on networks where signed-out ones don't.
+        val signedIn = runCatching { dev.kestrel.app.Graph.account.session.value != null }.getOrDefault(false)
+        if (preferFallback || signedIn) {
             runCatching { return Fallback.resolve(videoId) }
         }
         return try {
-            fromNewPipe(NpRepo.stream(videoId))
+            val r = fixLinks(fromNewPipe(NpRepo.stream(videoId)))
+            if (!linksWork(r)) throw java.io.IOException("Stream links refused")
+            r
         } catch (e: Exception) {
             try {
                 Fallback.resolve(videoId)
@@ -89,6 +94,39 @@ object Streams {
                 throw e
             }
         }
+    }
+
+    /** Fetches the first few KB of one link to check YouTube accepts it. */
+    private suspend fun linksWork(r: Resolved): Boolean = withContext(Dispatchers.IO) {
+        if (r.video.isLive || !JsSolver.available) return@withContext true
+        val url = r.pickAudio()?.url ?: r.pickVideo(360)?.url ?: return@withContext true
+        runCatching {
+            Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(url, 0, 4095, 1)).execute().use { it.isSuccessful }
+        }.getOrDefault(true) // network trouble: let the player retry instead
+    }
+
+    @Volatile private var npCheck: Pair<Long, Boolean>? = null
+
+    /** True when NewPipe can't decode "n" (its links then carry the raw value and get HTTP 403). */
+    private fun newPipeNBroken(videoId: String): Boolean {
+        val now = System.currentTimeMillis()
+        npCheck?.takeIf { now - it.first < 60 * 60 * 1000L }?.let { return it.second }
+        val broken = runCatching {
+            org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager
+                .getUrlWithThrottlingParameterDeobfuscated(videoId, "https://rr1---sn-test.googlevideo.com/videoplayback?n=kestrelTestValue1&x=1")
+        }.isFailure
+        npCheck = now to broken
+        return broken
+    }
+
+    /** Decodes "n" in NewPipe's links with our own solver when NewPipe's decoder is broken. */
+    suspend fun fixLinks(r: Resolved): Resolved {
+        if (r.viaFallback || !JsSolver.available) return r
+        val ns = (r.videoOnly + r.audio + r.muxed).mapNotNull { JsSolver.nOf(it.url) }
+        if (ns.isEmpty() || !withContext(Dispatchers.IO) { newPipeNBroken(r.video.id) }) return r
+        val solved = runCatching { JsSolver.solve(ns, emptyList()) }.getOrNull() ?: return r
+        fun fix(o: StreamOption) = JsSolver.nOf(o.url)?.let { solved.n[it] }?.let { o.copy(url = JsSolver.withN(o.url, it)) } ?: o
+        return r.copy(videoOnly = r.videoOnly.map(::fix), audio = r.audio.map(::fix), muxed = r.muxed.map(::fix))
     }
 
     private fun ext(f: MediaFormat?) = when (f) {
@@ -163,18 +201,35 @@ object Fallback {
 
     /** Used with the Google session: YouTube lets signed-in users through its bot check. */
     private val authClients = listOf(
-        // Safari web client: returns an HLS manifest, which plays without extra tokens.
-        Client("WEB", 1, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20251105.01.00") }, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)", web = true, auth = true),
-        Client("TVHTML5", 7, { "7.20251105.10.00" }, "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version", auth = true),
-        Client("WEB", 1, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20251105.01.00") }, Http.BROWSER_UA, web = true, auth = true),
+        // Mobile web: still returns direct links (desktop web gets SABR-only streams).
+        Client("MWEB", 2, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20261106.00.00") }, MWEB_UA, mapOf("userAgent" to MWEB_UA), web = true, auth = true),
+        Client("TVHTML5", 7, { tvVersion() }, TV_UA, auth = true),
+        // Safari web client: may return an HLS manifest.
+        Client("WEB", 1, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20261106.00.00") }, SAFARI_UA, mapOf("userAgent" to SAFARI_UA), web = true, auth = true),
     )
 
     private val clients = listOf(
-        Client("WEB", 1, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20251105.01.00") }, Http.BROWSER_UA, web = true),
+        Client("WEB", 1, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20261106.00.00") }, Http.BROWSER_UA, web = true),
+        Client("MWEB", 2, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20261106.00.00") }, MWEB_UA, mapOf("userAgent" to MWEB_UA), web = true),
         Client("ANDROID_VR", 28, { VR_VERSION }, VR_UA, mapOf("deviceMake" to "Oculus", "deviceModel" to "Quest 3", "androidSdkVersion" to 32, "osName" to "Android", "osVersion" to "12L")),
         Client("IOS", 5, { "20.45.4" }, "com.google.ios.youtube/20.45.4 (iPhone16,2; U; CPU iOS 18_6 like Mac OS X;)", mapOf("deviceMake" to "Apple", "deviceModel" to "iPhone16,2", "osName" to "iPhone", "osVersion" to "18.6.0.22G86")),
         Client("VISIONOS", 101, { "0.1" }, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15", mapOf("deviceMake" to "Apple", "deviceModel" to "RealityDevice14,1", "osName" to "visionOS", "osVersion" to "1.3.21O771")),
     )
+
+    private const val SAFARI_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)"
+    const val MWEB_UA = "Mozilla/5.0 (iPad; CPU OS 16_7_10 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1,gzip(gfe)"
+    private const val TV_UA = "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version"
+
+    @Volatile private var tvVer: String? = null
+
+    /** Current TV client version, read from YouTube's TV page (old versions get refused). */
+    private fun tvVersion(): String = tvVer ?: runCatching {
+        val html = Http.client.newCall(Request.Builder().url("https://www.youtube.com/tv").header("User-Agent", TV_UA).build())
+            .execute().use { it.body.string() }
+        Regex("\"clientVersion\":\"(7\\.[0-9.]+)\"").find(html)?.groupValues?.get(1)
+    }.getOrNull()?.also { tvVer = it } ?: "7.20261102.18.00"
+
+    @Volatile private var diagTag = ""
 
     /** Index of the client that worked last time; tried first. */
     @Volatile private var preferred = 0
@@ -186,13 +241,23 @@ object Fallback {
     }.getOrNull()
 
     suspend fun resolve(videoId: String): Resolved = withContext(Dispatchers.IO) {
-        val sts = runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId) }.getOrNull()
+        val sts = (if (JsSolver.available) JsSolver.signatureTimestamp() else null)
+            ?: runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId) }.getOrNull()
         var lastError: Exception? = null
         val session = dev.kestrel.app.Graph.account.session.value
         if (session != null) {
             val ds = session.dataSyncId.substringBefore("||").ifBlank { null }
             val playerPot = dev.kestrel.app.player.PoTokens.mint(videoId)
-            val streamPot = ds?.let { dev.kestrel.app.player.PoTokens.mint(it) }
+            val captured = dev.kestrel.app.player.PotCapture.get(session)
+            android.util.Log.w("Kestrel", "DIAG captured pot=${captured?.length}")
+            val streamPot = captured ?: ds?.let { dev.kestrel.app.player.PoTokens.mint(it) }
+            // TEMP: same request without our own player token, to see if that token is what caps links at 1 MB.
+            authClients.firstOrNull { it.name == "MWEB" }?.let { m ->
+                diagTag = "noPlayerPot"
+                runCatching { tryClient(m, videoId, session.visitorData.ifBlank { freshVisitor() }, sts, null, streamPot, session) }
+                    .onFailure { android.util.Log.w("Kestrel", "DIAG[noPlayerPot] ${it.message}") }
+                diagTag = "withPlayerPot"
+            }
             for (c in authClients) {
                 try {
                     val r = tryClient(c, videoId, session.visitorData.ifBlank { freshVisitor() }, sts, playerPot, if (c.web) streamPot else null, session)
@@ -226,8 +291,10 @@ object Fallback {
         throw lastError ?: IllegalStateException("No backup client worked")
     }
 
-    private fun tryClient(c: Client, videoId: String, visitor: String?, sts: Int?, playerPot: String?, streamingPot: String?, session: dev.kestrel.app.data.account.Session? = null): Resolved {
+    private suspend fun tryClient(c: Client, videoId: String, visitor: String?, sts: Int?, playerPot: String?, streamingPot: String?, session: dev.kestrel.app.data.account.Session? = null): Resolved {
         val version = c.version()
+        val mobile = c.name == "MWEB"
+        val sts = if (mobile && JsSolver.available) JsSolver.signatureTimestamp(true) ?: sts else sts
         val body = buildJsonObject {
             putJsonObject("context") {
                 putJsonObject("client") {
@@ -266,16 +333,37 @@ object Fallback {
         val d = r.obj("videoDetails")
         val raw = (r.at("streamingData.adaptiveFormats") as? JsonArray).orEmpty().map { it as JsonObject }
 
+        fun cipherOf(f: JsonObject): Map<String, String>? = f.str("signatureCipher")
+            ?.split("&")?.associate { it.substringBefore("=") to java.net.URLDecoder.decode(it.substringAfter("="), "UTF-8") }
+
+        // Decode every "n" and signature value in one go with the player script.
+        val nVals = raw.mapNotNull { f -> (f.str("url") ?: cipherOf(f)?.get("url"))?.let(JsSolver::nOf) }
+        val sVals = raw.mapNotNull { f -> cipherOf(f)?.get("s") }
+        val solved = if (JsSolver.available && (nVals.isNotEmpty() || sVals.isNotEmpty())) {
+            runCatching { JsSolver.solve(nVals, sVals, mobile) }.onFailure { android.util.Log.w("Kestrel", "solver failed: $it") }.getOrNull()
+        } else null
+        var newPipeBroken = false
+        var sigLogged = 0
+
         fun urlOf(f: JsonObject): String? {
             var u = f.str("url")
             if (u == null) {
-                val cipher = f.str("signatureCipher") ?: return null
-                val q = cipher.split("&").associate { it.substringBefore("=") to java.net.URLDecoder.decode(it.substringAfter("="), "UTF-8") }
-                val sig = org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, q["s"] ?: return null)
+                val q = cipherOf(f) ?: return null
+                val s = q["s"] ?: return null
+                val sig = solved?.sig?.get(s)
+                    ?: org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, s)
                 u = q["url"] + "&" + (q["sp"] ?: "signature") + "=" + java.net.URLEncoder.encode(sig, "UTF-8")
+                if (sigLogged++ == 0) android.util.Log.w("Kestrel", "DIAG sig ours=${sig.take(20)}.. np=${runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, s).take(20) }.getOrElse { it.toString().take(80) }} sp=${q["sp"]} len=${s.length}->${sig.length} sts=$sts")
             }
             val raw0 = u!!
-            u = runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(videoId, raw0) }.getOrDefault(raw0)
+            val n = JsSolver.nOf(raw0)
+            val nn = n?.let { solved?.n?.get(it) }
+            u = when {
+                nn != null -> JsSolver.withN(raw0, nn)
+                n == null || newPipeBroken -> raw0
+                else -> runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager.getUrlWithThrottlingParameterDeobfuscated(videoId, raw0) }
+                    .onFailure { newPipeBroken = true }.getOrDefault(raw0)
+            }
             if (streamingPot != null && !u.contains("&pot=")) u += "&pot=$streamingPot"
             return u
         }
@@ -296,7 +384,6 @@ object Fallback {
         }
 
         val audio = raw.filter { it.str("mimeType")?.startsWith("audio") == true }.mapNotNull { runCatching { opt(it) }.getOrNull() }
-        if (audio.isEmpty()) android.util.Log.d("Kestrel", "${c.name} ua=${c.ua.take(30)} streamingData keys=${(r["streamingData"] as? JsonObject)?.keys} fmt0=${raw.firstOrNull()?.keys}")
         val video = raw.filter { it.str("mimeType")?.startsWith("video") == true }.mapNotNull { runCatching { opt(it) }.getOrNull() }
         val live = d.str("isLive") == "true"
         val hls = r.at("streamingData").str("hlsManifestUrl")
@@ -306,9 +393,31 @@ object Fallback {
             if (code !in 200..299) error("${c.name}: HLS refused (HTTP $code)")
         } else if (!live) {
             // Make sure the links really download before trusting this client.
-            val probe = audio.firstOrNull { it.ext == "m4a" } ?: audio.firstOrNull() ?: error("${c.name}: no audio")
+            val probe = audio.firstOrNull { it.ext == "m4a" } ?: audio.firstOrNull() ?: error("${c.name}: no audio (fmts=${raw.size} urls=${raw.count { it.str("url") != null }} cipher=${raw.count { it.str("signatureCipher") != null }} sabr=${r.at("streamingData").str("serverAbrStreamingUrl") != null})")
             val code = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(probe.url, 0, 4095, 1)).execute().use { it.code }
-            if (code !in 200..299) error("${c.name}: stream links refused (HTTP $code)")
+            if (code !in 200..299) error("${c.name}: stream links refused (HTTP $code, ciphered=${raw.count { it.str("signatureCipher") != null }}/${raw.size})")
+            run {
+                val v = video.firstOrNull { it.height in 1..720 && it.ext == "mp4" }
+                val vc = v?.let { Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(it.url, 0, 4095, 1)).execute().use { r2 -> r2.code } }
+                val a2 = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(probe.url, 0, 2097151, 2)).execute().use { r2 -> r2.code }
+                val a3 = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(probe.url, 2097152, 4194303, 3)).execute().use { r2 -> r2.code }
+                android.util.Log.w("Kestrel", "DIAG ${c.name} audio=$code video(${v?.itag})=$vc audio2=$a2 audio3=$a3 ciphered=${raw.count { it.str("signatureCipher") != null }}")
+                if (session != null) {
+                    // TEMP: which form of the streaming token lets bytes past 1 MB through?
+                    val base = probe.url.replace(Regex("&pot=[^&]*"), "")
+                    val tok = Regex("&pot=([^&]*)").find(probe.url)?.groupValues?.get(1)
+                    val variants = listOf(
+                        "asIs" to probe.url,
+                        "noPad" to (tok?.let { "$base&pot=${it.trimEnd('=')}" } ?: base),
+                        "pctPad" to (tok?.let { "$base&pot=${it.replace("=", "%3D")}" } ?: base),
+                        "none" to base,
+                    )
+                    val res = variants.mapIndexed { i, (label, u3) ->
+                        "$label=" + Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(u3, 1048576, 1572863, i + 10)).execute().use { r2 -> r2.code }
+                    }
+                    android.util.Log.w("Kestrel", "DIAG[$diagTag] past1MB $res tokLen=${tok?.length}")
+                }
+            }
         } else if (hls == null) error("${c.name}: no live stream")
         val v = Video(
             id = videoId,

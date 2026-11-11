@@ -70,7 +70,7 @@ object Health {
     }
 
     private suspend fun guarded(f: Feature, block: suspend () -> CheckResult): CheckResult = try {
-        withTimeout(12_000) { block() }
+        withTimeout(25_000) { block() }
     } catch (e: Exception) {
         CheckResult(f, false, "Check timed out or failed: ${e.message ?: e.javaClass.simpleName}")
     }
@@ -96,7 +96,7 @@ object Health {
     }
 
     private suspend fun checkStreams(): CheckResult {
-        suspend fun np() = canFetch(Streams.fromNewPipe(NpRepo.stream(TEST_VIDEO)))
+        suspend fun np() = canFetch(Streams.fixLinks(Streams.fromNewPipe(NpRepo.stream(TEST_VIDEO))))
         if (runCatching { np() }.getOrDefault(false)) {
             Streams.preferFallback = false
             return CheckResult(Feature.Streams, true, "OK")

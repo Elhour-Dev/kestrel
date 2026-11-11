@@ -36,6 +36,7 @@ class YtDataSource : BaseDataSource(true) {
             return when (c) {
                 "VISIONOS" -> runCatching { YoutubeParsingHelper.getVisionOsUserAgent(null) }.getOrDefault(Http.BROWSER_UA)
                 "ANDROID_VR" -> Fallback.VR_UA
+                "MWEB" -> Fallback.MWEB_UA
                 else -> Http.BROWSER_UA
             }
         }
@@ -49,7 +50,9 @@ class YtDataSource : BaseDataSource(true) {
                 .url("$url&range=$start-$endInclusive&rn=$rn")
                 .header("User-Agent", userAgentFor(url))
                 .post(POST_BODY.toRequestBody())
-            if (c == null || c.startsWith("WEB")) {
+            if (c == "MWEB") {
+                b.header("Origin", "https://m.youtube.com").header("Referer", "https://m.youtube.com/")
+            } else if (c == null || c.startsWith("WEB")) {
                 b.header("Origin", "https://www.youtube.com").header("Referer", "https://www.youtube.com/")
             }
             return b.build()
@@ -107,6 +110,7 @@ class YtDataSource : BaseDataSource(true) {
     private fun check(resp: Response, spec: DataSpec) {
         if (!resp.isSuccessful) {
             val code = resp.code
+            android.util.Log.w("Kestrel", "DIAG media HTTP $code itag=${Regex("[?&]itag=([0-9]+)").find(url)?.groupValues?.get(1)} sig=${url.contains("&sig=")} pot=${url.contains("&pot=")} c=${Regex("[?&]c=([A-Z_]+)").find(url)?.groupValues?.get(1)} mime=${Regex("[?&]mime=([^&]+)").find(url)?.groupValues?.get(1)}")
             val msg = resp.message
             resp.close()
             throw HttpDataSource.InvalidResponseCodeException(

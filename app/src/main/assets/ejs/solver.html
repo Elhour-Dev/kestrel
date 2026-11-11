@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<script src="yt.solver.lib.min.js"></script>
+<script>globalThis.meriyah = lib.meriyah; globalThis.astring = lib.astring;</script>
+<script src="yt.solver.core.js"></script>
+<script>
+// Keeps the prepared player so later calls skip parsing it again.
+var prepared = {};
+function run(id, pid, reqs) {
+  setTimeout(function () {
+    try {
+      var input = prepared[pid]
+        ? { type: 'preprocessed', preprocessed_player: prepared[pid], requests: reqs }
+        : { type: 'player', player: KSolver.player(), output_preprocessed: true, requests: reqs };
+      var out = jsc(input);
+      if (out.preprocessed_player) { prepared[pid] = out.preprocessed_player; delete out.preprocessed_player; }
+      KSolver.done(id, JSON.stringify(out));
+    } catch (e) {
+      KSolver.done(id, JSON.stringify({ type: 'error', error: String(e) }));
+    }
+  }, 0);
+}
+KSolver.ready();
+</script>
+</head><body></body></html>
