@@ -10,13 +10,14 @@ Repo: github.com/Elhour-Dev/kestrel (private for now; must be public for in-app 
 
 ## Done
 - [x] Skeleton, GPLv3, wrapper, extractor probe
+- [x] Data layer (NpRepo, InnerTube, LocalStore, SponsorBlock, Streams+fallback)
+- [x] Player (YtDataSource, PlayerManager, PlaybackService, PopupService, gestures)
+- [x] Downloads engine + service, Health checks, Updater
+- [x] All UI screens written + resources/icon (first full compile in progress)
 
 ## Next
-- [ ] Core: models, NewPipe repo, local store, settings, SponsorBlock
-- [ ] Player: ExoPlayer singleton, service, PiP, popup, gestures
-- [ ] UI screens
-- [ ] Account: WebView login, encrypted cookies, InnerTube
-- [ ] Downloads
-- [ ] Startup checks + updater
-- [ ] CI workflows + smoke tests
-- [ ] Install on phone, fix bugs
+- [ ] Fix compile errors, build APK
+- [ ] CI workflows (release.yml, daily-update.yml) + SmokeTest
+- [ ] Release keystore (outside repo) + GitHub secrets
+- [ ] Install on phone (fresh), test, fix crashes
+- [ ] Final report

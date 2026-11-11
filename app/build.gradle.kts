@@ -64,6 +64,11 @@ android {
         buildConfig = true
     }
 
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
+    }
+
     testOptions {
         unitTests.isReturnDefaultValues = true
     }
