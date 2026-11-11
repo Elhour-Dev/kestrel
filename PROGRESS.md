@@ -13,30 +13,29 @@ Repo: github.com/Elhour-Dev/kestrel (private for now; must be public for in-app 
   signed in = SABR-only (no direct links). Browsing, account, comments all work.
 - App handles it: clear message, no crash. Playback code paths verified only on PC earlier (12:15) when IP was clean.
 
-## Playback fix in progress (2026-11-11 afternoon) — CURRENT TASK
-- Root bug: NewPipe's "n"/signature decoder is broken on the current player (Rhino error) -> every link 403.
-  Fixed with `player/JsSolver.kt` + `assets/ejs/` (yt-dlp EJS solver, run in a hidden offline WebView).
-- Signed in, MWEB client (mobile web) gives direct links here; short videos play fully on the phone.
-- Remaining: bytes past ~1 MB get 403 = streaming token (pot) rejected. Our BotGuard token AND the token
-  read from YouTube's own mobile player (`player/PotCapture.kt`, hidden WebView, fetch hook, 94-byte token)
-  both still capped. Next phone run (APK already built, versionCode 177) logs:
-  `DIAG[noPlayerPot|withPlayerPot] past1MB [asIs, noPad, pctPad, none]` -> tells if our own player-request
-  token causes the cap, or the token format. Play https://www.youtube.com/watch?v=M7lc1UVf-VE and grep "DIAG".
-- RESULT (16:24, versionCode 178): all past1MB = 403 (one 400), for BOTH noPlayerPot and withPlayerPot,
-  all 4 formats. So token format and our player request are not the cause. Captured pot is now 128 bytes,
-  but it was captured on warm-up video aqz-KE-bpKQ, not the played video.
-- RESULT (16:30, versionCode 179): pot now captured on the SAME video (PotCapture.get(session, videoId)) -> still
-  all 403 past 1MB. Also a 2nd small request on the same link (audio2) gets 403. Token is not the fix here.
-  NEXT: WebView player fallback (auto-switch when own player gets 403).
-- DONE (16:50, versionCode 185): WebView fallback WORKS on phone (new VPN too). `ui/screens/WebPlayer.kt`,
-  `NowPlaying.web` flag, `PlayerManager.useWebPlayer()`. Video shows, plays, unmuted.
-  Fixes found: video had height 0 with 100vh CSS -> use position:fixed + 100%; YouTube autoplays muted -> unmute in JS.
-  TODO: switch takes ~50 s (own player tries all clients + retry first) -> make it faster;
-  "Web player" label is clipped; check controls/seek on tap; KSTAT TEMP DIAG log in WebPlayer.kt to remove.
-- If nothing works: fallback plan = play through YouTube's mobile web player in a WebView (it plays fine here).
-- TEMP "DIAG" logging in Streams.kt, YtDataSource.kt, PotCapture.kt must be removed before release.
-- Phone screen timeout set to max for testing; restore with `adb shell settings put system screen_off_timeout 60000`
-  and `adb shell svc power stayon false`.
+## Audit + playback fix (2026-11-11 evening) — CURRENT TASK
+Root cause (proven): YouTube blocks this VPN's IP for direct stream links. yt-dlp 2026.10.26 on the PC
+(same VPN) fails with every client (bot check; web_embedded gives links but 403; HLS stuck). So no
+direct-link trick works here; YouTube's own web player (WebView) is the fix. Earlier "1 MB cap" = same block.
+Done (commits 7771b3c, 85042a4, e96b075 + uncommitted WebHost PAGE_JS change):
+- Streams.linkWorks(url): start + past-1MB check, shared by player, Fallback and Health. Sets blockedUntil.
+- Fallback: HLS-only clients now probe one segment; stop trying clients once blocked; no double Fallback run.
+- Health TEST_VIDEO = M7lc1UVf-VE (audio > 1 MB; old one was too small to see the cap).
+- Removed PotCapture.kt (proven useless). Media3 1.11.1, AGP 9.5.1. Zero compiler warnings.
+- Web mode: WebSessionPlayer (SimpleBasePlayer) in PlaybackService -> notification + foreground;
+  WebView parked 1x1 in MainActivity when no screen shows it; onWindowVisibilityChanged forced VISIBLE.
+  => background play works (tested 60 s after Home), PiP works, mini player works.
+- Clear error for private/paid/geo/age(signed out)/UNPLAYABLE videos (no web fallback for those).
+- Shorts: observe web flag (was black). Upload date formatted. Details load after web switch.
+- Switch to web: ~7 s on first video, instant after (was ~50 s).
+Phone tests passed (versionCode 199): normal, long (26 min), music, age-restricted (signed in), live
+(4t4AQ15yj1M), Shorts + swipe, dead stream message, PiP, background, notification.
+IN PROGRESS (versionCode 200, built, not yet tested): PAGE_JS now also injected at document start
+(bug: after Shorts, next video showed full YouTube page, muted -> script hadn't run).
+Test: Shorts tab, swipe, then open 8aGhZQkoFbQ via intent -> must show video only, with sound.
+Still to test: SponsorBlock skip in web mode (8aGhZQkoFbQ has intro 0-17 s; rewind with
+KEYCODE_MEDIA_REWIND), downloads (likely blocked on this network -> check message), login.
+Then: commit, push, final report (root cause, techniques, fixes, tests, what's left).
 
 ## Done
 - [x] Full app: browse, search, channels, playlists, shorts, comments, player, background, PiP, popup,

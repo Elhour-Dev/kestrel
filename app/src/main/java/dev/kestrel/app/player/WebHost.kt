@@ -21,9 +21,13 @@ object WebHost {
     private const val UA = "Mozilla/5.0 (iPad; CPU OS 16_7_10 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
 
     // Hide everything but the video, keep it playing with sound, and report progress to the app.
+    // Runs at document start and again when the page finishes; safe to run twice.
     private const val PAGE_JS = """
 (function(){
-  if (!document.getElementById('kestrel-css')) {
+  if (window.kestrelLoop) return;
+  window.kestrelWant = true;
+  window.kestrelLoop = setInterval(function(){
+  if (document.head && !document.getElementById('kestrel-css')) {
     var s = document.createElement('style'); s.id = 'kestrel-css';
     s.textContent = 'html,body{background:#000!important;overflow:hidden!important}' +
       'ytm-mobile-topbar-renderer,header,ytm-pivot-bar-renderer,.watch-below-the-player,ytm-single-column-watch-next-results-renderer,ytm-item-section-renderer,ytm-engagement-panel{display:none!important}' +
@@ -31,9 +35,6 @@ object WebHost {
       'video{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;object-fit:contain!important;z-index:10000!important}';
     document.head.appendChild(s);
   }
-  if (window.kestrelLoop) return;
-  window.kestrelWant = true;
-  window.kestrelLoop = setInterval(function(){
     var v = document.querySelector('video');
     if (!v) return;
     if (!v.kestrelHooked) {
@@ -117,7 +118,7 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
                 }
             }, "KWeb")
             if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.DOCUMENT_START_SCRIPT)) {
-                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(this, KEEP_VISIBLE_JS, setOf("https://m.youtube.com"))
+                androidx.webkit.WebViewCompat.addDocumentStartJavaScript(this, KEEP_VISIBLE_JS + PAGE_JS, setOf("https://m.youtube.com"))
             }
         }
     }
