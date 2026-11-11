@@ -248,7 +248,7 @@ object Fallback {
         if (session != null) {
             val ds = session.dataSyncId.substringBefore("||").ifBlank { null }
             val playerPot = dev.kestrel.app.player.PoTokens.mint(videoId)
-            val captured = dev.kestrel.app.player.PotCapture.get(session)
+            val captured = dev.kestrel.app.player.PotCapture.get(session, videoId)
             android.util.Log.w("Kestrel", "DIAG captured pot=${captured?.length}")
             val streamPot = captured ?: ds?.let { dev.kestrel.app.player.PoTokens.mint(it) }
             // TEMP: same request without our own player token, to see if that token is what caps links at 1 MB.

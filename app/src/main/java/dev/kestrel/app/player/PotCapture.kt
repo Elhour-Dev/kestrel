@@ -129,20 +129,21 @@ object PotCapture {
     }
 
     /** Streaming token for this session, or null when it couldn't be read. */
-    suspend fun get(session: Session): String? = mutex.withLock {
+    suspend fun get(session: Session, videoId: String): String? = mutex.withLock {
+        val key = session.dataSyncId + "|" + videoId
         val now = System.currentTimeMillis()
-        token?.takeIf { now - it.second < TTL && owner == session.dataSyncId }?.let { return it.first }
+        token?.takeIf { now - it.second < TTL && owner == key }?.let { return it.first }
         val ctx = app ?: return null
         val found = CompletableDeferred<String>()
         var web: WebView? = null
         val t0 = now
         try {
-            withContext(Dispatchers.Main) { web = open(ctx, session, found) }
+            withContext(Dispatchers.Main) { web = open(ctx, session, videoId, found) }
             val pot = withTimeoutOrNull(25_000) { found.await() }
             Log.i(TAG, if (pot != null) "token read in ${System.currentTimeMillis() - t0} ms" else "no token found")
             if (pot != null) {
                 token = pot to System.currentTimeMillis()
-                owner = session.dataSyncId
+                owner = key
             }
             pot
         } finally {
@@ -157,7 +158,7 @@ object PotCapture {
     }
 
     @SuppressLint("SetJavaScriptEnabled")
-    private fun open(ctx: Context, session: Session, found: CompletableDeferred<String>): WebView {
+    private fun open(ctx: Context, session: Session, videoId: String, found: CompletableDeferred<String>): WebView {
         val cm = CookieManager.getInstance()
         session.cookies.forEach { (k, v) ->
             cm.setCookie("https://m.youtube.com", "$k=$v; Domain=.youtube.com; Path=/; Secure")
@@ -196,7 +197,7 @@ object PotCapture {
                 )
             }
         }
-        w.loadUrl("https://m.youtube.com/watch?v=aqz-KE-bpKQ")
+        w.loadUrl("https://m.youtube.com/watch?v=$videoId")
         return w
     }
 }

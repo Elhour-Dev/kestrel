@@ -22,6 +22,12 @@ Repo: github.com/Elhour-Dev/kestrel (private for now; must be public for in-app 
   both still capped. Next phone run (APK already built, versionCode 177) logs:
   `DIAG[noPlayerPot|withPlayerPot] past1MB [asIs, noPad, pctPad, none]` -> tells if our own player-request
   token causes the cap, or the token format. Play https://www.youtube.com/watch?v=M7lc1UVf-VE and grep "DIAG".
+- RESULT (16:24, versionCode 178): all past1MB = 403 (one 400), for BOTH noPlayerPot and withPlayerPot,
+  all 4 formats. So token format and our player request are not the cause. Captured pot is now 128 bytes,
+  but it was captured on warm-up video aqz-KE-bpKQ, not the played video.
+- RESULT (16:30, versionCode 179): pot now captured on the SAME video (PotCapture.get(session, videoId)) -> still
+  all 403 past 1MB. Also a 2nd small request on the same link (audio2) gets 403. Token is not the fix here.
+  NEXT: WebView player fallback (auto-switch when own player gets 403).
 - If nothing works: fallback plan = play through YouTube's mobile web player in a WebView (it plays fine here).
 - TEMP "DIAG" logging in Streams.kt, YtDataSource.kt, PotCapture.kt must be removed before release.
 - Phone screen timeout set to max for testing; restore with `adb shell settings put system screen_off_timeout 60000`
