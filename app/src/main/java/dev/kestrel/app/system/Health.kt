@@ -70,7 +70,8 @@ object Health {
     private suspend fun guarded(f: Feature, block: suspend () -> CheckResult): CheckResult = try {
         withTimeout(25_000) { block() }
     } catch (e: Exception) {
-        if (f == Feature.Streams) webPlayer() else CheckResult(f, false, "Check timed out or failed: ${e.message ?: e.javaClass.simpleName}")
+        // A timeout here means our links hung (blocked network); other errors (offline, extractor) are real failures.
+        if (f == Feature.Streams && e is kotlinx.coroutines.TimeoutCancellationException) webPlayer() else CheckResult(f, false, "Check timed out or failed: ${e.message ?: e.javaClass.simpleName}")
     }
 
     /** Our links don't work here: play videos in YouTube's own web player instead. */
