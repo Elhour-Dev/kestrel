@@ -1,0 +1,17 @@
+.gradle/
+.kotlin/
+build/
+/local.properties
+/keystore.properties
+*.jks
+*.keystore
+*.apk
+*.aab
+.idea/
+*.iml
+.DS_Store
+captures/
+# Never commit cookies or secrets
+*cookies*
+*.env
+secrets/
