@@ -34,6 +34,7 @@ import dev.kestrel.app.data.streams.Streams
 import dev.kestrel.app.ui.friendlyError
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -295,7 +296,7 @@ object PlayerManager {
         loadJob = scope.launch {
             try {
                 // If YouTube can't be reached at all, requests hang: give up with a clear message.
-                val r = kotlinx.coroutines.withTimeoutOrNull(40_000) { Streams.resolve(video.id) } ?: run {
+                val r = try { withNetTimeout { Streams.resolve(video.id) } } catch (e: java.net.SocketTimeoutException) {
                     _now.update { it?.copy(loading = false, error = "The connection timed out. Check your network or VPN and try again.") }
                     return@launch
                 }
@@ -467,12 +468,18 @@ object PlayerManager {
         }
     }
 
+    /** Gives up after 40 s even if the network call is stuck in blocking code (a plain timeout can't interrupt that). */
+    private suspend fun <T> withNetTimeout(block: suspend () -> T): T {
+        val job = scope.async { block() }
+        return kotlinx.coroutines.withTimeoutOrNull(40_000) { job.await() } ?: run { job.cancel(); throw java.net.SocketTimeoutException("timed out") }
+    }
+
     /** History, SponsorBlock and video details (title, description, related) while the web player plays. */
     private suspend fun webDetails(video: Video) {
         Graph.store.addHistory(video)
         reportHistory(video.id)
         loadSegments(video.id)
-        val res = runCatching { Streams.fromNewPipe(NpRepo.stream(video.id)) }
+        val res = runCatching { withNetTimeout { Streams.fromNewPipe(NpRepo.stream(video.id)) } }
         res.exceptionOrNull()?.let { e ->
             // Unplayable, or YouTube can't be reached at all (the web page would just stay blank): show the error.
             val offline = generateSequence(e) { it.cause }.any { it is java.io.IOException }

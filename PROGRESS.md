@@ -57,3 +57,4 @@ Then: commit, push, final report (root cause, techniques, fixes, tests, what's l
 - Normal, long, live, age-restricted: PLAYING (direct links still 403 here, web-player fallback used). Background 45 s: OK. SponsorBlock toast: OK.
 - Downloads: still 403 on this VPN. Message shortened to "Blocked by YouTube." so it fits the list row.
 - Sign-out test skipped on purpose (I can't sign back in for the user).
+- Build 209: no-VPN case showed "Loading…" forever (blocking network call ignored the timeout). Fixed with `withNetTimeout` in PlayerManager (40 s, works in both the direct and web paths). Verified on phone: "The connection timed out. Check your network or VPN and try again." + Retry after ~55 s.
