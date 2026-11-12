@@ -35,6 +35,9 @@ object WebHost {
       'video{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;object-fit:contain!important;z-index:10000!important}';
     document.head.appendChild(s);
   }
+    if (!window.kestrelErr && document.querySelector('.ytp-error,.ytp-error-content-wrap,ytm-player-error-message-renderer,.player-error-message')) {
+      window.kestrelErr = true; KWeb.error();
+    }
     var v = document.querySelector('video');
     if (!v) return;
     if (!v.kestrelHooked) {
@@ -73,6 +76,8 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
     var onEnded: (() -> Unit)? = null
     /** Called on the main thread when the WebView's renderer died and the WebView was released. */
     var onCrash: (() -> Unit)? = null
+    /** Called on the main thread when YouTube's page shows its own player error ("Something went wrong"). */
+    var onError: (() -> Unit)? = null
     /** Called on the main thread when play/pause, duration or the video changes. */
     var onChange: (() -> Unit)? = null
 
@@ -118,6 +123,10 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
                     playing = isPlaying
                     main.post { onProgress?.invoke(positionMs, durationMs) }
                     if (stateChanged) changed()
+                }
+                @JavascriptInterface
+                fun error() {
+                    main.post { onError?.invoke() }
                 }
                 @JavascriptInterface
                 fun ended() {

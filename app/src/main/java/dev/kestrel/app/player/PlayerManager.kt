@@ -79,6 +79,8 @@ object PlayerManager {
 
     private var loadJob: Job? = null
     private var retried = false
+    private var webRetried = false
+    private var lastWebPos = 0L
     private val skipped = HashSet<String>()
     private var tick = 0
 
@@ -109,6 +111,19 @@ object PlayerManager {
         })
         WebHost.onProgress = { pos, _ -> onWebProgress(pos) }
         WebHost.onEnded = { onWebEnded() }
+        WebHost.onError = {
+            // YouTube's page failed mid-video: reload once at the same spot, then show a clear message.
+            val np = _now.value
+            if (np?.web == true) {
+                if (!webRetried) {
+                    webRetried = true
+                    startWeb(np.video, lastWebPos / 1000)
+                } else {
+                    WebHost.release()
+                    _now.update { it?.copy(web = false, loading = false, error = "YouTube's player stopped with an error. Try again or switch VPN server.") }
+                }
+            }
+        }
         WebHost.onCrash = {
             _now.update { if (it?.web == true) it.copy(web = false, loading = false, error = "The video player stopped. Try again.") else it }
         }
@@ -146,6 +161,7 @@ object PlayerManager {
 
     private fun onWebProgress(pos: Long) {
         val np = _now.value ?: return
+        if (pos > 0) lastWebPos = pos
         if (np.web && WebHost.videoId == np.video.id && WebHost.playing) onPosition(np, pos) { WebHost.seekTo(it) }
     }
 
@@ -281,6 +297,8 @@ object PlayerManager {
         saveCurrentPosition()
         loadJob?.cancel()
         retried = false
+        webRetried = false
+        lastWebPos = 0L
         skipped.clear()
         val audioOnly = _now.value?.audioOnly ?: false
         _now.value = NowPlaying(video, loading = true, quality = Graph.settings.defaultQuality.value, audioOnly = audioOnly)
