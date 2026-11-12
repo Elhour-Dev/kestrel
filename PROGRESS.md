@@ -52,3 +52,8 @@ Then: commit, push, final report (root cause, techniques, fixes, tests, what's l
 ## User must do
 - bash tools/set-github-secrets.sh   (signing key secrets; my attempt was blocked)
 - make repo public (needed for in-app updates), then run the Release workflow once
+
+## New VPN server retest (2026-11-12, build 208)
+- Normal, long, live, age-restricted: PLAYING (direct links still 403 here, web-player fallback used). Background 45 s: OK. SponsorBlock toast: OK.
+- Downloads: still 403 on this VPN. Message shortened to "Blocked by YouTube." so it fits the list row.
+- Sign-out test skipped on purpose (I can't sign back in for the user).

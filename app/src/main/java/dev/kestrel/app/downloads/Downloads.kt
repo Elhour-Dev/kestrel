@@ -231,7 +231,7 @@ class Downloads(private val context: Context) {
                 while (true) {
                     try {
                         Http.mediaClient.newCall(YtDataSource.rangedRequest(url, pos, last, rn++)).execute().use { resp ->
-                            if (resp.code == 403) error("Blocked by YouTube. Try another network.")
+                            if (resp.code == 403) error("Blocked by YouTube.")
                             if (!resp.isSuccessful) error("Server returned HTTP ${resp.code}")
                             resp.body.byteStream().use { input ->
                                 while (true) {
