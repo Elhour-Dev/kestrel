@@ -114,6 +114,7 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.okhttp)
     implementation(libs.okhttp)
+    implementation(libs.okhttp.doh)
     implementation(libs.serialization.json)
     implementation(libs.coroutines.android)
 

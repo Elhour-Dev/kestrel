@@ -157,7 +157,7 @@ private fun VideoSurface(np: NowPlaying, activity: MainActivity, modifier: Modif
             update = { frame ->
                 val pv = frame.tag as PlayerView
                 if (pv.player == null) pv.player = PlayerManager.player
-                pv.useController = !inPip
+                pv.useController = !inPip && np.error == null
                 frame.enabledGestures = !inPip
                 pv.setFullscreenButtonState(MainActivity.Ui.fullscreen)
             },
@@ -169,7 +169,8 @@ private fun VideoSurface(np: NowPlaying, activity: MainActivity, modifier: Modif
         }
         if (np.loading) CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
         np.error?.let { err ->
-            Column(Modifier.align(Alignment.Center).padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            // Opaque, so the player's controls never show through the message.
+            Column(Modifier.fillMaxSize().background(Color.Black).padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(err, color = Color.White, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = { PlayerManager.retry() }) { Icon(Icons.Default.Refresh, null); Text(" Retry") }

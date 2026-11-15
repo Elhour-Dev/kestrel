@@ -1,5 +1,14 @@
 package dev.kestrel.app.ui
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -194,9 +203,25 @@ fun PagedItemList(
 
 // ---------------- states ----------------
 
+/** Placeholder cards that pulse while a list loads (a spinner when [skeleton] is false). */
 @Composable
-fun LoadingState(modifier: Modifier = Modifier) {
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+fun LoadingState(modifier: Modifier = Modifier, skeleton: Boolean = true) {
+    if (!skeleton) {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+    val pulse = rememberInfiniteTransition(label = "skeleton")
+    val alpha by pulse.animateFloat(0.45f, 0.9f, infiniteRepeatable(tween(800), RepeatMode.Reverse), label = "alpha")
+    val shade = MaterialTheme.colorScheme.surfaceVariant
+    Column(modifier.fillMaxSize().clipToBounds().graphicsLayer { this.alpha = alpha }.semantics { contentDescription = "Loading" }) {
+        repeat(4) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).background(shade))
+                Box(Modifier.padding(top = 10.dp).fillMaxWidth(0.85f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(shade))
+                Box(Modifier.padding(top = 8.dp).fillMaxWidth(0.5f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(shade))
+            }
+        }
+    }
 }
 
 @Composable

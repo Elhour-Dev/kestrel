@@ -298,7 +298,7 @@ fun PlaylistsScreen() {
                 }
                 when {
                     remoteError != null -> item { Text(remoteError!!, Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
-                    remote == null -> item { LoadingState(Modifier.height(80.dp)) }
+                    remote == null -> item { LoadingState(Modifier.height(80.dp), skeleton = false) }
                     else -> items(remote!!, key = { "r" + it.id }) { p -> PlaylistRow(p, subtitle = "Your account") { nav.openPlaylist(p.id, "account") } }
                 }
             }

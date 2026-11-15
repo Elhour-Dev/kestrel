@@ -32,6 +32,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -131,6 +132,38 @@ private fun SwitchRow(title: String, sub: String? = null, pref: Pref<Boolean>) {
         trailingContent = { Switch(v, { pref.value = it }) },
         modifier = Modifier.clickable { pref.value = !v },
     )
+}
+
+/** App-only proxy, for when the VPN can't route this app (split tunneling) or you want a different exit. */
+@Composable
+private fun ProxyRow(pref: Pref<String>) {
+    val v by pref.flow.collectAsStateWithLifecycle()
+    var open by remember { mutableStateOf(false) }
+    var text by remember(open) { mutableStateOf(v) }
+    ListItem(
+        headlineContent = { Text("App proxy") },
+        supportingContent = { Text(v.ifBlank { "Off (uses the phone's network or VPN)" }) },
+        modifier = Modifier.clickable { open = true },
+    )
+    if (open) {
+        val valid = text.isBlank() || dev.kestrel.app.data.net.Http.parseProxy(text) != null
+        AlertDialog(
+            onDismissRequest = { open = false },
+            title = { Text("App proxy") },
+            text = {
+                Column {
+                    Text("For example socks5://127.0.0.1:10808 (v2rayNG's local port) or http://host:port. Leave empty to turn off. Applies after restart.", style = MaterialTheme.typography.bodySmall)
+                    OutlinedTextField(
+                        text, { text = it }, Modifier.fillMaxWidth().padding(top = 12.dp), singleLine = true,
+                        isError = !valid, placeholder = { Text("socks5://127.0.0.1:10808") },
+                        supportingText = { if (!valid) Text("Use socks5://host:port or http://host:port") },
+                    )
+                }
+            },
+            confirmButton = { TextButton(enabled = valid, onClick = { pref.value = text.trim(); open = false }) { Text("Save") } },
+            dismissButton = { TextButton(onClick = { open = false }) { Text("Cancel") } },
+        )
+    }
 }
 
 @Composable
@@ -263,6 +296,10 @@ fun SettingsScreen() {
                 )
             }
             item { ChoiceRow("Downloads at the same time", s.maxParallelDownloads, (1..5).map { it to it.toString() }) }
+
+            item { SectionTitle("Network") }
+            item { ProxyRow(s.proxy) }
+            item { SwitchRow("DNS over HTTPS", "Look up addresses through Cloudflare instead of the network's DNS. Applies after restart.", s.dnsOverHttps) }
 
             item { SectionTitle("Content") }
             item {

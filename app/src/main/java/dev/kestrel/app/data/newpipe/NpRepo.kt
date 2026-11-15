@@ -48,7 +48,7 @@ object NpRepo {
         if (html.isNullOrEmpty()) return ""
         if (!html.contains('<') && !html.contains('&')) return html
         return runCatching {
-            androidx.core.text.HtmlCompat.fromHtml(html, androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY).toString()?.trim()
+            androidx.core.text.HtmlCompat.fromHtml(html, androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY).toString().trim()
         }.getOrNull() ?: html
     }
 

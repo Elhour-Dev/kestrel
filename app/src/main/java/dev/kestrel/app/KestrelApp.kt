@@ -18,6 +18,9 @@ import dev.kestrel.app.data.newpipe.NpRepo
 import dev.kestrel.app.downloads.Downloads
 import dev.kestrel.app.player.PlayerManager
 
+import androidx.webkit.ProxyConfig
+import androidx.webkit.ProxyController
+import androidx.webkit.WebViewFeature
 /** App-wide singletons. Simple manual wiring, no DI framework. */
 object Graph {
     lateinit var app: Application
@@ -33,6 +36,7 @@ class KestrelApp : Application(), SingletonImageLoader.Factory {
         super.onCreate()
         Graph.app = this
         Graph.settings = Settings(this)
+        applyNetworkSettings()
         Graph.store = LocalStore(filesDir)
         Graph.account = AccountStore(this)
         Graph.innerTube = InnerTube(Graph.account).apply {
@@ -45,6 +49,19 @@ class KestrelApp : Application(), SingletonImageLoader.Factory {
         createChannels()
         PlayerManager.init(this)
         Graph.downloads = Downloads(this)
+    }
+
+    /** App-only proxy and DNS (Settings > Network) for our requests and the WebViews. */
+    private fun applyNetworkSettings() {
+        val proxy = Graph.settings.proxy.value.trim()
+        Http.configure(proxy, Graph.settings.dnsOverHttps.value)
+        if (Http.parseProxy(proxy) != null && WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+            runCatching {
+                ProxyController.getInstance().setProxyOverride(
+                    ProxyConfig.Builder().addProxyRule(proxy.replace("socks5h://", "socks5://")).build(), { it.run() }, {},
+                )
+            }
+        }
     }
 
     private fun createChannels() {

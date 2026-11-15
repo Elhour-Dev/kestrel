@@ -51,6 +51,9 @@ class Settings(context: Context) {
     val loginPromptDone = bool("login_prompt_done", false)
     val skippedUpdate = int("skipped_update", 0)
     val sendHistory = bool("send_history", true)
+    /** App-only proxy, "socks5://host:port" or "http://host:port"; "" = use the phone's network/VPN. */
+    val proxy = str("proxy", "")
+    val dnsOverHttps = bool("dns_over_https", false)
 }
 
 object SponsorCategories {

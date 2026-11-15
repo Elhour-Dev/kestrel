@@ -83,7 +83,7 @@ fun ShortsScreen() {
     val vm = viewModel(key = "shorts") { itemsVm(::loadShorts, { t -> searchMoreAny(t).let { p -> Page(p.items.filterIsInstance<Video>().filter(::isShortLike), p.next) } }) }
     val shorts = vm.items.filterIsInstance<Video>()
     when {
-        !vm.loaded -> { LoadingState(); return }
+        !vm.loaded -> { LoadingState(skeleton = false); return }
         shorts.isEmpty() && vm.error != null -> { ErrorState(vm.error!!) { vm.refresh() }; return }
         shorts.isEmpty() -> { EmptyState("No Shorts found right now.", icon = Icons.Default.Whatshot); return }
     }
