@@ -59,3 +59,10 @@ Then: commit, push, final report (root cause, techniques, fixes, tests, what's l
 - Sign-out test skipped on purpose (I can't sign back in for the user).
 - Build 209: no-VPN case showed "Loading…" forever (blocking network call ignored the timeout). Fixed with `withNetTimeout` in PlayerManager (40 s, works in both the direct and web paths). Verified on phone: "The connection timed out. Check your network or VPN and try again." + Retry after ~55 s.
 - Build 211: web-player mid-video error ("Something went wrong") is now detected (page script looks for YouTube's player-error element -> `WebHost.onError`). PlayerManager reloads once at the last good position, then shows "YouTube's player stopped with an error. Try again or switch VPN server." + Retry. Verified on phone: reload at ~2 min, error screen at ~3.5 min on this VPN (the VPN itself still breaks the stream). Cosmetic: the controls overlay can show behind the error text.
+
+## Session 2026-11-15 (overhaul)
+- Backup tag: backup-before-overhaul-2026-11-15 (pushed).
+- Audit: build OK, 12 compiler warnings, 61 lint warnings (0 errors). Stream/download smoke tests were skipped (bot check).
+- Root cause proven from the VPS itself: YouTube bot-blocks the VPS IP (and the second VPS). PO-token provider did not help; no IPv6.
+- Fix (on the VPS, not in the app): YouTube domains now leave the VPS through Cloudflare WARP; everything else unchanged.
+  Notes + undo script are on the VPS in /root/warp (README.txt, rollback.sh). Verified: full 18.5 MB download from the PC through the VPN.
