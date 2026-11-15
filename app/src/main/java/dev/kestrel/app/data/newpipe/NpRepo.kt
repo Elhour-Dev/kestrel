@@ -48,7 +48,7 @@ object NpRepo {
         if (html.isNullOrEmpty()) return ""
         if (!html.contains('<') && !html.contains('&')) return html
         return runCatching {
-            androidx.core.text.HtmlCompat.fromHtml(html, androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY)?.toString()?.trim()
+            androidx.core.text.HtmlCompat.fromHtml(html, androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY).toString()?.trim()
         }.getOrNull() ?: html
     }
 
@@ -200,7 +200,7 @@ object NpRepo {
         author = c.uploaderName.orEmpty(),
         authorAvatar = smallImage(c.uploaderAvatars),
         authorChannelId = channelId(c.uploaderUrl),
-        text = plain(c.commentText?.content),
+        text = plain(c.commentText.content),
         likes = c.textualLikeCount.orEmpty(),
         published = c.textualUploadDate.orEmpty(),
         replyCount = c.replyCount.coerceAtLeast(0),

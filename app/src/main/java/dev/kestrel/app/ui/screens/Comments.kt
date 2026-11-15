@@ -126,7 +126,7 @@ fun CommentsSheet(videoId: String, onDismiss: () -> Unit) {
                         onReply = if (loader.signedIn && c.replyParams != null) ({ replyTo = c }) else null,
                         onDelete = if (c.deleteAction != null) ({
                             scope.launch {
-                                runCatching { Graph.innerTube.deleteComment(c.deleteAction!!) }
+                                runCatching { Graph.innerTube.deleteComment(c.deleteAction) }
                                     .onSuccess { comments = comments.filterNot { it.id == c.id }; nav.message("Comment deleted") }
                                     .onFailure { nav.message(friendlyError(it)) }
                             }
@@ -136,7 +136,7 @@ fun CommentsSheet(videoId: String, onDismiss: () -> Unit) {
                     if (shown != null) {
                         shown.forEach { rc -> CommentView(rc, Modifier.padding(start = 48.dp), null, if (rc.deleteAction != null) ({
                             scope.launch {
-                                runCatching { Graph.innerTube.deleteComment(rc.deleteAction!!) }
+                                runCatching { Graph.innerTube.deleteComment(rc.deleteAction) }
                                     .onSuccess { replies[c.id] = shown.filterNot { it.id == rc.id }; nav.message("Reply deleted") }
                                     .onFailure { nav.message(friendlyError(it)) }
                             }
@@ -144,7 +144,7 @@ fun CommentsSheet(videoId: String, onDismiss: () -> Unit) {
                     } else if (c.replyCount > 0 && c.repliesPage != null) {
                         TextButton(onClick = {
                             scope.launch {
-                                runCatching { loader.more(c.repliesPage!!).first }
+                                runCatching { loader.more(c.repliesPage).first }
                                     .onSuccess { replies[c.id] = it }
                                     .onFailure { nav.message(friendlyError(it)) }
                             }

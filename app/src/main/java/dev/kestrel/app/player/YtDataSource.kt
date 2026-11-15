@@ -28,7 +28,8 @@ class YtDataSource : BaseDataSource(true) {
     }
 
     companion object {
-        private const val CHUNK = 2L * 1024 * 1024
+        /** Range size per request. [Streams.linkWorks] checks links with the same size. */
+        const val CHUNK = 1024L * 1024
         private val POST_BODY = byteArrayOf(0x78, 0)
 
         fun userAgentFor(url: String): String {

@@ -77,7 +77,7 @@ object Streams {
     /** Forces the fallback client. Set by the startup health check when NewPipe streams fail. */
     @Volatile var preferFallback = false
 
-    /** Set when this network caps stream links at ~1 MB; videos go straight to the web player until then. */
+    /** Set when every source's links get refused here; videos go straight to the web player until then. */
     @Volatile var blockedUntil = 0L
     const val BLOCK_MS = 30 * 60_000L
     fun linksBlocked() = System.currentTimeMillis() < blockedUntil
@@ -86,23 +86,32 @@ object Streams {
         if (linksBlocked()) throw java.io.IOException("This network blocks stream links")
         // Signed-in links get through YouTube's bot check on networks where signed-out ones don't.
         val signedIn = runCatching { dev.kestrel.app.Graph.account.session.value != null }.getOrDefault(false)
-        val fallbackFirst = preferFallback || signedIn
-        if (fallbackFirst) {
-            runCatching { return Fallback.resolve(videoId) }
-            if (linksBlocked()) throw java.io.IOException("This network blocks stream links")
-        }
-        return try {
+        var npError: Exception? = null
+        var fbError: Exception? = null
+        suspend fun newPipe(): Resolved? = try {
             val r = fixLinks(fromNewPipe(NpRepo.stream(videoId)))
             if (!linksWork(r)) throw java.io.IOException("Stream links refused")
             r
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (fallbackFirst || linksBlocked()) throw e
-            try {
-                Fallback.resolve(videoId)
-            } catch (_: Exception) {
-                throw e
-            }
+            npError = e; null
         }
+        suspend fun fallback(): Resolved? = try {
+            Fallback.resolve(videoId)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            fbError = e; null
+        }
+        val r = if (preferFallback || signedIn) fallback() ?: newPipe() else newPipe() ?: fallback()
+        if (r != null) return r
+        // Links were handed out but refused: this network blocks them for now.
+        if (listOfNotNull(npError, fbError).any { it.message?.contains("refused") == true }) {
+            blockedUntil = System.currentTimeMillis() + BLOCK_MS
+        }
+        // NewPipe's errors say best why a video can't play (private, age, region...).
+        throw npError ?: fbError ?: IllegalStateException("No video source worked")
     }
 
     /** Checks YouTube really serves one of [r]'s links. */
@@ -113,18 +122,19 @@ object Streams {
     }
 
     /**
-     * True when YouTube serves [url]: fetches the start and a range past 1 MB.
-     * Some networks (flagged VPN IPs) get only the first ~1 MB, then HTTP 403; that marks links as blocked.
+     * True when YouTube serves [url] the way the player asks for it: the first two chunks.
+     * Only the status is read, not the bytes. Small ranges are not enough: without a good streaming
+     * token YouTube serves a few KB and then refuses the player's 1 MB requests.
      */
     fun linkWorks(url: String): Boolean {
-        val start = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(url, 0, 4095, 1)).execute().use { it.code }
-        if (start !in 200..299) return false
-        val past = Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(url, 1_048_576, 1_052_671, 2)).execute().use { it.code }
-        if (past == 403) {
-            blockedUntil = System.currentTimeMillis() + BLOCK_MS
-            return false
-        }
-        return true
+        val chunk = dev.kestrel.app.player.YtDataSource.CHUNK
+        val clen = Regex("[?&]clen=(\\d+)").find(url)?.groupValues?.get(1)?.toLongOrNull()
+        fun code(from: Long, to: Long, rn: Int) =
+            Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(url, from, to, rn)).execute().use { it.code }
+        if (code(0, (clen?.coerceAtMost(chunk) ?: chunk) - 1, 1) !in 200..299) return false
+        if (clen != null && clen <= chunk) return true
+        val end = clen?.coerceAtMost(2 * chunk) ?: (2 * chunk)
+        return code(chunk, end - 1, 2) in 200..299
     }
 
     @Volatile private var npCheck: Pair<Long, Boolean>? = null
@@ -222,7 +232,11 @@ object Fallback {
     private data class Client(val name: String, val id: Int, val version: () -> String, val ua: String, val extra: Map<String, Any> = emptyMap(), val web: Boolean = false, val auth: Boolean = false)
 
     /** Used with the Google session: YouTube lets signed-in users through its bot check. */
+    /** TV client as a Samsung Tizen set: its links need no streaming token (yt-dlp's default, Nov 2026). */
+    private val tvSamsung = Client("TVHTML5", 7, { "5.20260707" }, SAMSUNG_UA, mapOf("userAgent" to SAMSUNG_UA, "deviceMake" to "Samsung", "deviceModel" to "UKS9800", "osName" to "Tizen", "osVersion" to "2.4.0"))
+
     private val authClients = listOf(
+        tvSamsung.copy(auth = true),
         // Mobile web: still returns direct links (desktop web gets SABR-only streams).
         Client("MWEB", 2, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20261106.00.00") }, MWEB_UA, mapOf("userAgent" to MWEB_UA), web = true, auth = true),
         Client("TVHTML5", 7, { tvVersion() }, TV_UA, auth = true),
@@ -231,6 +245,7 @@ object Fallback {
     )
 
     private val clients = listOf(
+        tvSamsung,
         Client("WEB", 1, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20261106.00.00") }, Http.BROWSER_UA, web = true),
         Client("MWEB", 2, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20261106.00.00") }, MWEB_UA, mapOf("userAgent" to MWEB_UA), web = true),
         Client("ANDROID_VR", 28, { VR_VERSION }, VR_UA, mapOf("deviceMake" to "Oculus", "deviceModel" to "Quest 3", "androidSdkVersion" to 32, "osName" to "Android", "osVersion" to "12L")),
@@ -241,6 +256,7 @@ object Fallback {
     private const val SAFARI_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.5 Safari/605.1.15,gzip(gfe)"
     const val MWEB_UA = "Mozilla/5.0 (iPad; CPU OS 16_7_10 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1,gzip(gfe)"
     private const val TV_UA = "Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version"
+    private const val SAMSUNG_UA = "Mozilla/5.0 (SMART-TV; Linux; Tizen 2.4.0) AppleWebKit/538.1 (KHTML, like Gecko) Version/2.4.0 TV Safari/538.1"
 
     @Volatile private var tvVer: String? = null
 
@@ -250,6 +266,10 @@ object Fallback {
             .execute().use { it.body.string() }
         Regex("\"clientVersion\":\"(7\\.[0-9.]+)\"").find(html)?.groupValues?.get(1)
     }.getOrNull()?.also { tvVer = it } ?: "7.20261102.18.00"
+
+    /** Keeps a "links refused" error over others: it tells the caller this network blocks links. */
+    private fun keepRefused(kept: Exception?, e: Exception) =
+        if (kept?.message?.contains("refused") == true) kept else e
 
     /** Index of the client that worked last time; tried first. */
     @Volatile private var preferred = 0
@@ -276,8 +296,7 @@ object Fallback {
                     return@withContext r
                 } catch (e: Exception) {
                     android.util.Log.w("Kestrel", "signed-in client ${c.name} failed: ${e.message}")
-                    if (Streams.linksBlocked()) throw e // no client gets through on this network
-                    lastError = e
+                    lastError = keepRefused(lastError, e)
                 }
             }
         }
@@ -296,8 +315,7 @@ object Fallback {
                     return@withContext r
                 } catch (e: Exception) {
                     android.util.Log.w("Kestrel", "backup client ${c.name} failed (round $round): ${e.message}")
-                    if (Streams.linksBlocked()) throw e
-                    lastError = e
+                    lastError = keepRefused(lastError, e)
                 }
             }
         }
@@ -366,7 +384,7 @@ object Fallback {
                     ?: org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager.deobfuscateSignature(videoId, s)
                 u = q["url"] + "&" + (q["sp"] ?: "signature") + "=" + java.net.URLEncoder.encode(sig, "UTF-8")
             }
-            val raw0 = u!!
+            val raw0 = u
             val n = JsSolver.nOf(raw0)
             val nn = n?.let { solved?.n?.get(it) }
             u = when {
@@ -402,15 +420,12 @@ object Fallback {
         if (hlsOnly) {
             // The manifest can load while the video segments are refused: check one segment too.
             fun get(u: String) = Http.client.newCall(Request.Builder().url(u).header("User-Agent", c.ua).build()).execute().use { if (it.isSuccessful) it.body.string() else null }
-            val master = get(hls!!) ?: error("${c.name}: HLS refused")
+            val master = get(hls) ?: error("${c.name}: HLS refused")
             val segment = master.lineSequence().firstOrNull { it.startsWith("http") }?.let(::get)
                 ?.lineSequence()?.firstOrNull { it.startsWith("http") }
             if (segment != null) {
                 val seg = Http.client.newCall(Request.Builder().url(segment).header("User-Agent", c.ua).header("Range", "bytes=0-4095").build()).execute().use { it.code }
-                if (seg == 403) {
-                    Streams.blockedUntil = System.currentTimeMillis() + Streams.BLOCK_MS
-                    error("${c.name}: HLS segments refused (HTTP 403)")
-                }
+                if (seg == 403) error("${c.name}: HLS segments refused (HTTP 403)")
             }
         } else if (!live) {
             // Make sure the links really download before trusting this client.

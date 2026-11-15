@@ -36,7 +36,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
-import androidx.compose.material.icons.outlined.OpenInNew
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.AlertDialog
@@ -244,7 +244,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
                 item { Chip(Icons.Default.Download, "Download") { downloadFor = v } }
                 item { Chip(Icons.Default.Headphones, "Audio only", np.audioOnly) { PlayerManager.setAudioOnly(!np.audioOnly) } }
                 item {
-                    Chip(Icons.Outlined.OpenInNew, "Popup") {
+                    Chip(Icons.AutoMirrored.Outlined.OpenInNew, "Popup") {
                         if (np.web) {
                             nav.message("Popup isn't available in the web player")
                         } else if (PopupService.canDraw(ctx)) {
@@ -280,7 +280,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
         }
         if (!r?.description.isNullOrBlank()) item {
             Surface(Modifier.fillMaxWidth().padding(horizontal = 12.dp).clickable { expanded = !expanded }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-                Text(r!!.description, Modifier.padding(12.dp).animateContentSize(), maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                Text(r.description, Modifier.padding(12.dp).animateContentSize(), maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
             }
         }
         if (np.localPath == null) item {

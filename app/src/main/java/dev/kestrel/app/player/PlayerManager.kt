@@ -324,6 +324,7 @@ object PlayerManager {
                 Graph.store.addHistory(v)
                 reportHistory(v.id)
                 loadSegments(v.id)
+                if (r.viaFallback) fillDetails(v.id)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -518,6 +519,30 @@ object PlayerManager {
         val v = r.video.copy(thumbnail = video.thumbnail.ifBlank { r.video.thumbnail })
         val details = r.copy(video = v, videoOnly = emptyList(), audio = emptyList(), muxed = emptyList(), hls = null)
         _now.update { if (it?.video?.id == video.id) it.copy(video = v, resolved = details) else it }
+    }
+
+    /** Backup clients give streams but few details: add title, channel, description and related videos. */
+    private suspend fun fillDetails(id: String) {
+        val d = runCatching { withNetTimeout { Streams.fromNewPipe(NpRepo.stream(id)) } }.getOrNull()
+        if (d == null) {
+            if (_now.value?.video?.title.isNullOrBlank()) basicInfo(id)?.let { (title, channel) ->
+                _now.update { if (it?.video?.id == id) it.copy(video = it.video.copy(title = title, channelName = channel)) else it }
+            }
+            return
+        }
+        _now.update { np ->
+            val cur = np?.resolved
+            if (np == null || np.video.id != id || cur == null) return@update np
+            val v = d.video.copy(thumbnail = np.video.thumbnail.ifBlank { d.video.thumbnail }, isLive = np.video.isLive)
+            np.copy(
+                video = v,
+                resolved = cur.copy(
+                    video = v, description = d.description.ifBlank { cur.description }, channelAvatar = d.channelAvatar,
+                    subscribers = d.subscribers, likes = d.likes, uploadDate = d.uploadDate,
+                    subtitles = cur.subtitles.ifEmpty { d.subtitles }, related = d.related,
+                ),
+            )
+        }
     }
 
     /** Title and channel name from YouTube's public oEmbed endpoint. */

@@ -20,21 +20,8 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        val wrapped = object : ForwardingPlayer(PlayerManager.player) {
-            override fun getAvailableCommands(): Player.Commands {
-                val b = super.getAvailableCommands().buildUpon()
-                    .add(Player.COMMAND_SEEK_TO_NEXT).add(Player.COMMAND_SEEK_TO_PREVIOUS)
-                    .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM).add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
-                return b.build()
-            }
-            override fun isCommandAvailable(command: Int) = availableCommands.contains(command)
-            override fun hasNextMediaItem() = PlayerManager.hasNext()
-            override fun hasPreviousMediaItem() = true
-            override fun seekToNext() = PlayerManager.next()
-            override fun seekToNextMediaItem() = PlayerManager.next()
-            override fun seekToPrevious() = PlayerManager.previous()
-            override fun seekToPreviousMediaItem() = PlayerManager.previous()
-        }
+        val wrapped = withQueueControls(PlayerManager.player)
+        val webWrapped = withQueueControls(web)
         val open = PendingIntent.getActivity(
             this, 0,
             Intent(this, MainActivity::class.java).setAction(MainActivity.ACTION_OPEN_PLAYER)
@@ -46,11 +33,26 @@ class PlaybackService : MediaSessionService() {
         WebHost.onChange = { web.refresh() }
         scope.launch {
             PlayerManager.now.collect { np ->
-                val p = if (np?.web == true) web else wrapped
+                val p = if (np?.web == true) webWrapped else wrapped
                 session?.let { if (it.player !== p) it.player = p }
                 web.refresh()
             }
         }
+    }
+
+    /** Next/previous in the notification follow our own queue, for both players. */
+    private fun withQueueControls(p: Player) = object : ForwardingPlayer(p) {
+        override fun getAvailableCommands(): Player.Commands = super.getAvailableCommands().buildUpon()
+            .add(Player.COMMAND_SEEK_TO_NEXT).add(Player.COMMAND_SEEK_TO_PREVIOUS)
+            .add(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM).add(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+            .build()
+        override fun isCommandAvailable(command: Int) = availableCommands.contains(command)
+        override fun hasNextMediaItem() = PlayerManager.hasNext()
+        override fun hasPreviousMediaItem() = true
+        override fun seekToNext() = PlayerManager.next()
+        override fun seekToNextMediaItem() = PlayerManager.next()
+        override fun seekToPrevious() = PlayerManager.previous()
+        override fun seekToPreviousMediaItem() = PlayerManager.previous()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session

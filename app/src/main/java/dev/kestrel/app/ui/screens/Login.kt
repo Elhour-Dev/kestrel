@@ -193,9 +193,6 @@ private fun LoginWebView(desktop: Boolean, onLoading: (Boolean) -> Unit, onDone:
                         .build(),
                 )
             }
-            if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
-                WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
-            }
             cm.setAcceptCookie(true)
             cm.setAcceptThirdPartyCookies(this, true)
             webViewClient = object : WebViewClient() {
