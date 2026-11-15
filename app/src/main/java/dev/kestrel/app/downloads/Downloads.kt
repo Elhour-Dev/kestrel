@@ -169,14 +169,25 @@ class Downloads(private val context: Context) {
     private suspend fun run(id: String) {
         try {
             val item = get(id) ?: return
-            val r = Streams.resolve(item.video.id)
-            val (v, a) = choose(r, item)
+            var r = Streams.resolve(item.video.id)
+            var (v, a) = choose(r, item)
             edit(id) { it.copy(videoItag = v?.itag ?: 0, audioItag = a?.itag ?: 0, video = it.video.copy(durationSec = r.video.durationSec, title = r.video.title.ifBlank { it.video.title })) }
             val sizes = listOfNotNull(v, a).map { clen(it.url) }
             edit(id) { it.copy(total = sizes.sum()) }
             val vf = File(tmpDir, "$id.v"); val af = File(tmpDir, "$id.a")
-            v?.let { fetch(id, it.url, vf, sizes[0]) }
-            a?.let { fetch(id, it.url, af, sizes.last()) }
+            // Links can expire or be refused mid-download: get fresh ones once and carry on where it stopped.
+            var refreshed = false
+            suspend fun <T> withFreshLinks(block: suspend () -> T): T = try { block() } catch (e: dev.kestrel.app.data.streams.LinksRefusedException) {
+                if (refreshed) throw e
+                refreshed = true
+                r = Streams.resolve(item.video.id)
+                val fresh = choose(r, get(id) ?: item)
+                v = fresh.first?.takeIf { it.itag == v?.itag } ?: throw e
+                a = fresh.second?.takeIf { it.itag == a?.itag } ?: if (a == null) null else throw e
+                block()
+            }
+            if (v != null) withFreshLinks { fetch(id, v!!.url, vf, sizes[0]) }
+            if (a != null) withFreshLinks { fetch(id, a!!.url, af, sizes.last()) }
             edit(id) { it.copy(status = DlStatus.Merging) }
             val webm = v != null && v.ext == "webm"
             val out = File(tmpDir, "$id.out")
@@ -225,7 +236,8 @@ class Downloads(private val context: Context) {
     private fun clen(url: String): Long = Regex("[?&]clen=(\\d+)").find(url)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
 
     private suspend fun fetch(id: String, url: String, dest: File, size: Long) {
-        val chunk = 4L * 1024 * 1024
+        // Same request size the player uses (and the link check tested): bigger ranges get refused on some networks.
+        val chunk = YtDataSource.CHUNK
         var pos = if (dest.exists()) dest.length() else 0L
         var rn = 1
         FileOutputStream(dest, true).use { out ->
@@ -239,7 +251,7 @@ class Downloads(private val context: Context) {
                 while (true) {
                     try {
                         Http.mediaClient.newCall(YtDataSource.rangedRequest(url, pos, last, rn++)).execute().use { resp ->
-                            if (resp.code == 403) error("Blocked by YouTube.")
+                            if (resp.code == 403) throw dev.kestrel.app.data.streams.LinksRefusedException("YouTube refused the download link (HTTP 403)")
                             if (!resp.isSuccessful) error("Server returned HTTP ${resp.code}")
                             resp.body.byteStream().use { input ->
                                 while (true) {
@@ -258,6 +270,8 @@ class Downloads(private val context: Context) {
                         }
                         break
                     } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: dev.kestrel.app.data.streams.LinksRefusedException) {
                         throw e
                     } catch (e: Exception) {
                         if (++attempt >= 4) throw e

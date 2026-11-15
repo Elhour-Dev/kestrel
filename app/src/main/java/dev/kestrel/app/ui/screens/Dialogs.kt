@@ -119,6 +119,7 @@ fun SaveToPlaylistDialog(video: Video, onDismiss: () -> Unit) {
     )
 }
 
+@androidx.annotation.OptIn(androidx.media3.common.util.UnstableApi::class)
 @Composable
 fun DownloadDialog(video: Video, onDismiss: () -> Unit) {
     val nav = LocalNav.current
@@ -128,7 +129,9 @@ fun DownloadDialog(video: Video, onDismiss: () -> Unit) {
     var full by remember { mutableStateOf(video) }
     LaunchedEffect(video.id) {
         try {
-            val r = Streams.resolve(video.id)
+            // The video that is playing already has its links: no need to wait for them again.
+            val playing = dev.kestrel.app.player.PlayerManager.now.value?.takeIf { it.video.id == video.id && !it.web }?.resolved
+            val r = playing?.takeIf { it.videoOnly.isNotEmpty() || it.audio.isNotEmpty() || it.muxed.isNotEmpty() } ?: Streams.resolve(video.id)
             full = r.video.copy(title = r.video.title.ifBlank { video.title }, channelName = r.video.channelName.ifBlank { video.channelName }, thumbnail = video.thumbnail.ifBlank { r.video.thumbnail })
             qualities = r.qualities()
             if (r.isLive) error = "Live streams can't be downloaded."
