@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -115,6 +116,18 @@ fun CommentsSheet(videoId: String, onDismiss: () -> Unit) {
         }
     }
 
+    // Deleting is permanent on YouTube: ask first. Holds what to delete ("comment"/"reply") and how.
+    var confirmDelete by remember { mutableStateOf<Pair<String, () -> Unit>?>(null) }
+    confirmDelete?.let { (what, run) ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text("Delete $what?") },
+            text = { Text("It will be removed from YouTube. This can't be undone.") },
+            confirmButton = { TextButton(onClick = { confirmDelete = null; run() }) { Text("Delete") } },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text("Cancel") } },
+        )
+    }
+
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
         Column(Modifier.fillMaxHeight(0.9f).imePadding()) {
             Text("Comments", Modifier.padding(horizontal = 16.dp, vertical = 4.dp), style = MaterialTheme.typography.titleMedium)
@@ -125,20 +138,24 @@ fun CommentsSheet(videoId: String, onDismiss: () -> Unit) {
                     CommentView(c,
                         onReply = if (loader.signedIn && c.replyParams != null) ({ replyTo = c }) else null,
                         onDelete = if (c.deleteAction != null) ({
-                            scope.launch {
-                                runCatching { Graph.innerTube.deleteComment(c.deleteAction) }
-                                    .onSuccess { comments = comments.filterNot { it.id == c.id }; nav.message("Comment deleted") }
-                                    .onFailure { nav.message(friendlyError(it)) }
+                            confirmDelete = "comment" to {
+                                scope.launch {
+                                    runCatching { Graph.innerTube.deleteComment(c.deleteAction) }
+                                        .onSuccess { comments = comments.filterNot { it.id == c.id }; nav.message("Comment deleted") }
+                                        .onFailure { nav.message(friendlyError(it)) }
+                                }
                             }
                         }) else null,
                     )
                     val shown = replies[c.id]
                     if (shown != null) {
                         shown.forEach { rc -> CommentView(rc, Modifier.padding(start = 48.dp), null, if (rc.deleteAction != null) ({
-                            scope.launch {
-                                runCatching { Graph.innerTube.deleteComment(rc.deleteAction) }
-                                    .onSuccess { replies[c.id] = shown.filterNot { it.id == rc.id }; nav.message("Reply deleted") }
-                                    .onFailure { nav.message(friendlyError(it)) }
+                            confirmDelete = "reply" to {
+                                scope.launch {
+                                    runCatching { Graph.innerTube.deleteComment(rc.deleteAction) }
+                                        .onSuccess { replies[c.id] = shown.filterNot { it.id == rc.id }; nav.message("Reply deleted") }
+                                        .onFailure { nav.message(friendlyError(it)) }
+                                }
                             }
                         }) else null) }
                     } else if (c.replyCount > 0 && c.repliesPage != null) {

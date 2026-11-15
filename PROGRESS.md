@@ -86,3 +86,4 @@ Then: commit, push, final report (root cause, techniques, fixes, tests, what's l
   bot-check text checked before the player-error box and only while the video hasn't loaded; notification gets the fallback title;
   Recents relaunch doesn't replay a link; DoH bootstrap 3-5 s timeout; daily job holds back (no commit, no release) an extractor bump when stream tests were skipped.
 - Known: right after `adb install -r` + force-stop, the first link opened can play the previously opened video (seen 3x; dev-only path).
+- Build 230: confirm dialog before deleting a comment/reply. Phone-tested: post, reply, delete, Cancel keeps it, Delete removes it (all on the user's account, test comments removed).
