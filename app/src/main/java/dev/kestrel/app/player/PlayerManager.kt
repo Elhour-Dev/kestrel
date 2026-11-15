@@ -55,6 +55,8 @@ data class NowPlaying(
     val segments: List<SponsorSegment> = emptyList(),
     /** Our links are blocked: play in YouTube's own web player ([WebHost]) instead. */
     val web: Boolean = false,
+    /** Watch page details (likes, description, collaborators, bell), loaded next to the stream links. */
+    val info: dev.kestrel.app.data.innertube.InnerTube.WatchInfo? = null,
 )
 
 /** Owns the single ExoPlayer used by the screen, background service, PiP and the popup. */
@@ -62,6 +64,9 @@ data class NowPlaying(
 object PlayerManager {
     lateinit var player: ExoPlayer
         private set
+
+    /** Player view of the web player: drives the notification and the on-screen controls. */
+    val webPlayer by lazy { WebSessionPlayer() }
     private lateinit var appContext: Context
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())
@@ -78,6 +83,7 @@ object PlayerManager {
     val messages: SharedFlow<String> get() = _messages
 
     private var loadJob: Job? = null
+    private var infoJob: Job? = null
     private var retried = false
     private var webRetried = false
     private var lastWebPos = 0L
@@ -109,6 +115,7 @@ object PlayerManager {
                 }
             }
         })
+        WebHost.onChange = { webPlayer.refresh() }
         WebHost.onProgress = { pos, _ -> onWebProgress(pos) }
         WebHost.onEnded = { onWebEnded() }
         WebHost.onError = {
@@ -316,6 +323,7 @@ object PlayerManager {
         _now.value = NowPlaying(video, loading = true, quality = Graph.settings.defaultQuality.value, audioOnly = audioOnly)
         player.stop()
         player.clearMediaItems()
+        loadInfo(video)
         if (Streams.linksBlocked()) {
             // This network blocks our links: go straight to the web player, fetch details on the side.
             startWeb(video, resumeSec(video))
@@ -355,6 +363,26 @@ object PlayerManager {
                 }
                 useWebPlayer()
                 webDetails(video)
+            }
+        }
+    }
+
+    /** Details come from YouTube's watch page right away, so they show while the links still load. */
+    private fun loadInfo(video: Video) {
+        infoJob?.cancel()
+        infoJob = scope.launch {
+            val info = runCatching { Graph.innerTube.watchInfo(video.id) }
+                .onFailure { if (it !is kotlinx.coroutines.CancellationException) android.util.Log.w("Kestrel", "watch info failed: ${it.message}") }
+                .getOrNull() ?: return@launch
+            android.util.Log.i("Kestrel", "watch info: likes=${info.likes.isNotBlank()} desc=${info.description.isNotBlank()} collabs=${info.collaborators.size} bell=${info.notify.map { it.label + if (it.selected) "*" else "" }}")
+            _now.update { np ->
+                if (np?.video?.id != video.id) return@update np
+                val v = np.video
+                np.copy(info = info, video = v.copy(
+                    title = v.title.ifBlank { info.title },
+                    channelName = v.channelName.ifBlank { info.channelName },
+                    channelId = v.channelId ?: info.channelId,
+                ))
             }
         }
     }

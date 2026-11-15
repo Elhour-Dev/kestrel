@@ -203,19 +203,91 @@ class InnerTube(private val account: AccountStore) {
 
     // ---------------- video state & actions ----------------
 
-    data class VideoState(val like: String?, val subscribed: Boolean?, val channelId: String?)
+    /** One choice of the channel bell ("All", "Personalized", "None"); [params] goes back to YouTube as is. */
+    data class NotifyOption(val label: String, val params: String, val apiUrl: String, val selected: Boolean)
 
-    suspend fun videoState(videoId: String): VideoState {
-        val r = post("next", buildJsonObject { put("videoId", videoId) })
-        val like = r.findFirstStr("likeStatus")
-            ?: r.findAll("likeButtonRenderer").firstOrNull()?.str("likeStatus")
+    /** What the watch page shows around the player. Loads fast, without waiting for the stream links. */
+    data class WatchInfo(
+        val title: String,
+        val channelName: String,
+        val channelId: String?,
+        val channelAvatar: String?,
+        val subscribers: String,
+        val likes: String,
+        val description: String,
+        /** Every channel of a collaboration video (empty for a normal video). */
+        val collaborators: List<Channel>,
+        val like: String?,
+        val subscribed: Boolean?,
+        val notify: List<NotifyOption>,
+        val related: List<Item>,
+    )
+
+    /** The watch page's details. Signed in, it also has the like/subscribe state and the bell options. */
+    suspend fun watchInfo(videoId: String): WatchInfo {
+        val signedIn = account.session.value != null
+        val r = post("next", buildJsonObject { put("videoId", videoId) }, auth = signedIn)
+        val primary = r.findAll("videoPrimaryInfoRenderer").firstOrNull()
+        val owner = r.findAll("videoOwnerRenderer").firstOrNull()
+        val collaborators = owner?.findAll("listItemViewModel").orEmpty().mapNotNull { li ->
+            val id = li.findFirstStr("browseId")?.takeIf { it.startsWith("UC") } ?: return@mapNotNull null
+            Channel(id, li.obj("title").text().orEmpty(), li.at("leadingAccessory.avatarViewModel.image").thumb())
+        }.distinctBy { it.id }
+        val like = r.findFirstStr("likeStatus") ?: r.findAll("likeButtonRenderer").firstOrNull()?.str("likeStatus")
         val sub = r.findAll("subscribeButtonRenderer").firstOrNull()?.bool("subscribed")
             ?: r.findAll("subscribeButtonViewModel").firstOrNull()?.let { vm ->
                 val key = vm.str("stateEntityStoreKey")
                 r.findWhere { it.str("key") == key && it.containsKey("subscribed") }.firstOrNull()?.bool("subscribed")
+                    ?: r.findWhere { it.containsKey("subscribed") && it.containsKey("subscribeButtonState") }.firstOrNull()?.bool("subscribed")
             }
-        val channel = r.findAll("videoOwnerRenderer").firstOrNull()?.findFirst("browseId")?.let { (it as? JsonPrimitive)?.content }
-        return VideoState(like, sub, channel)
+        val secondary = r.at("contents.twoColumnWatchNextResults.secondaryResults")
+        return WatchInfo(
+            title = primary.obj("title").text().orEmpty(),
+            channelName = owner.obj("title").text().orEmpty(),
+            channelId = owner.obj("title").findFirstStr("browseId") ?: collaborators.firstOrNull()?.id ?: owner.findFirstStr("browseId"),
+            channelAvatar = owner.obj("thumbnail").thumb(),
+            subscribers = owner.obj("subscriberCountText").text().orEmpty().removeSuffix(" subscribers").trim(),
+            // The like count is the first button title with a digit (signed in, the layout differs a little).
+            likes = r.findAll("likeButtonViewModel").firstOrNull()
+                .findWhere { o -> o.str("title")?.any { it.isDigit() } == true }.firstOrNull()?.str("title").orEmpty(),
+            description = r.findAll("videoSecondaryInfoRenderer").firstOrNull().obj("attributedDescription").text().orEmpty(),
+            collaborators = if (collaborators.size > 1) collaborators else emptyList(),
+            like = like,
+            subscribed = sub,
+            notify = notifyOptions(r),
+            related = if (secondary != null) Parser.items(secondary) else emptyList(),
+        )
+    }
+
+    /** Bell choices: every modifyChannelNotificationPreferenceEndpoint with the label of the item holding it. */
+    private fun notifyOptions(root: JsonElement): List<NotifyOption> {
+        val out = mutableListOf<NotifyOption>()
+        fun walk(e: JsonElement, parents: List<JsonObject>) {
+            when (e) {
+                is JsonObject -> {
+                    val ep = e.obj("modifyChannelNotificationPreferenceEndpoint")
+                    val params = ep?.str("params")
+                    if (params != null) {
+                        val chain = (parents + e).asReversed()
+                        val label = chain.firstNotNullOfOrNull { it.obj("title").text() ?: it.obj("text").text() }.orEmpty()
+                        val selected = chain.firstNotNullOfOrNull { it.bool("isSelected") } ?: false
+                        val api = e.at("commandMetadata.webCommandMetadata").str("apiUrl")
+                            ?: "/youtubei/v1/notification/modify_channel_preference"
+                        if (label.isNotBlank()) out += NotifyOption(label, params, api, selected)
+                    }
+                    val next = parents + e
+                    e.values.forEach { walk(it, next) }
+                }
+                is JsonArray -> e.forEach { walk(it, parents) }
+                else -> {}
+            }
+        }
+        walk(root, emptyList())
+        return out.distinctBy { it.label }
+    }
+
+    suspend fun setNotifications(option: NotifyOption) {
+        post(option.apiUrl.substringAfter("/youtubei/v1/"), buildJsonObject { put("params", option.params) })
     }
 
     /** status: "like", "dislike" or "removelike". */

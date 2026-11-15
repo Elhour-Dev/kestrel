@@ -15,7 +15,7 @@ import kotlinx.coroutines.launch
 @UnstableApi
 class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
-    private val web = WebSessionPlayer()
+    private val web get() = PlayerManager.webPlayer
     private val scope = kotlinx.coroutines.MainScope()
 
     override fun onCreate() {
@@ -30,7 +30,6 @@ class PlaybackService : MediaSessionService() {
         )
         session = MediaSession.Builder(this, wrapped).setSessionActivity(open).build().also { addSession(it) }
         // The session follows whichever player is in use: ours, or YouTube's web player.
-        WebHost.onChange = { web.refresh() }
         scope.launch {
             PlayerManager.now.collect { np ->
                 val p = if (np?.web == true) webWrapped else wrapped
@@ -63,7 +62,6 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         scope.cancel()
-        WebHost.onChange = null
         session?.release()
         session = null
         super.onDestroy()

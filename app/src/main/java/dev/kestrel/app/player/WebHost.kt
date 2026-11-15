@@ -24,6 +24,23 @@ object WebHost {
     // Runs at document start and again when the page finishes; safe to run twice.
     private const val PAGE_JS = """
 (function(){
+  if (!window.kestrelNoAds) {
+    window.kestrelNoAds = true;
+    var strip = function(o){
+      if (!o || typeof o !== 'object') return o;
+      ['adPlacements','playerAds','adSlots','adBreakHeartbeatParams'].forEach(function(k){ if (k in o) delete o[k]; });
+      if (o.playerResponse) strip(o.playerResponse);
+      return o;
+    };
+    var parse = JSON.parse;
+    JSON.parse = function(){ var o = parse.apply(this, arguments); try { strip(o); } catch(e){} return o; };
+    try {
+      var ipr = window.ytInitialPlayerResponse;
+      Object.defineProperty(window, 'ytInitialPlayerResponse', { configurable: true,
+        get: function(){ return ipr; }, set: function(v){ ipr = strip(v); } });
+      if (ipr) strip(ipr);
+    } catch(e){}
+  }
   if (window.kestrelLoop) return;
   window.kestrelWant = true;
   window.kestrelLoop = setInterval(function(){
@@ -44,9 +61,20 @@ object WebHost {
       window.kestrelErr = true; KWeb.error();
     }
     if (!v) return;
+    // An ad that still got through plays in the same <video>: skip it, and keep it out of position/ended.
+    var ad = document.querySelector('.ad-showing,.ad-interrupting');
+    if (ad) {
+      var skip = document.querySelector('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,.ytp-ad-skip-button-container button');
+      if (skip) skip.click();
+      v.muted = true;
+      if (isFinite(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.2) v.currentTime = v.duration - 0.1;
+      window.kestrelInAd = true;
+      return;
+    }
+    if (window.kestrelInAd) { window.kestrelInAd = false; v.playbackRate = 1; }
     if (!v.kestrelHooked) {
       v.kestrelHooked = true;
-      v.addEventListener('ended', function(){ KWeb.ended(); });
+      v.addEventListener('ended', function(){ if (!document.querySelector('.ad-showing,.ad-interrupting')) KWeb.ended(); });
     }
     if (v.muted) { v.muted = false; var m = document.querySelector('.ytp-unmute,.ytmUnmuteButton,ytm-unmute-button,button[aria-label*="nmute"]'); m && m.click(); }
     if (window.kestrelWant && v.paused && !v.ended && v.play) { var pr = v.play(); pr && pr.catch && pr.catch(function(){}); }
@@ -62,6 +90,9 @@ Object.defineProperty(document, 'hidden', { get: function(){ return false; } });
 Object.defineProperty(document, 'visibilityState', { get: function(){ return 'visible'; } });
 document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropagation(); }, true);
 """
+
+    private val AD_HOSTS = listOf("doubleclick.net", "googlesyndication.com", "googleadservices.com", "googletagservices.com", "imasdk.googleapis.com")
+    private val AD_PATHS = listOf("/pagead/", "/api/stats/ads", "/ptracking", "/get_midroll_info")
 
     private val main = Handler(Looper.getMainLooper())
     private var view: WebView? = null
@@ -112,6 +143,15 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
                 override fun onConsoleMessage(m: android.webkit.ConsoleMessage) = true // keep YouTube's page logs out of logcat
             }
             webViewClient = object : WebViewClient() {
+                // Ad and ad-tracking requests get an empty answer.
+                override fun shouldInterceptRequest(view: WebView, request: android.webkit.WebResourceRequest): android.webkit.WebResourceResponse? {
+                    val u = request.url
+                    val host = u.host.orEmpty()
+                    val path = u.path.orEmpty()
+                    val ad = AD_HOSTS.any { host == it || host.endsWith(".$it") } ||
+                        (host.endsWith("youtube.com") && AD_PATHS.any { path.startsWith(it) })
+                    return if (ad) android.webkit.WebResourceResponse("text/plain", "utf-8", 204, "No Content", emptyMap(), java.io.ByteArrayInputStream(ByteArray(0))) else null
+                }
                 override fun onPageFinished(view: WebView, url: String) {
                     view.evaluateJavascript(PAGE_JS, null)
                 }

@@ -62,6 +62,10 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         Ui.pendingIntent = intent
+        // Debug builds only: `am start ... --ez force_web true` tests YouTube's web player.
+        if (BuildConfig.DEBUG && intent.getBooleanExtra("force_web", false)) {
+            dev.kestrel.app.data.streams.Streams.blockedUntil = System.currentTimeMillis() + 10 * 60_000L
+        }
     }
 
     fun setFullscreen(on: Boolean) {
