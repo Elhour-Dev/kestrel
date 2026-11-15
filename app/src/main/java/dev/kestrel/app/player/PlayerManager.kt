@@ -225,6 +225,11 @@ object PlayerManager {
         resume(video.id, video.durationSec)
         player.playWhenReady = true
         startService()
+        if (video.title.isBlank()) scope.launch {
+            basicInfo(video.id)?.let { (title, channel) ->
+                _now.update { if (it?.video?.id == video.id) it.copy(video = it.video.copy(title = title, channelName = channel)) else it }
+            }
+        }
     }
 
     fun next() {
@@ -546,14 +551,9 @@ object PlayerManager {
     }
 
     /** Title and channel name from YouTube's public oEmbed endpoint. */
-    private suspend fun basicInfo(id: String): Pair<String, String>? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-        runCatching {
-            val url = "https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=$id"
-            val body = dev.kestrel.app.data.net.Http.client.newCall(okhttp3.Request.Builder().url(url).build()).execute().use { it.body.string() }
-            val o = org.json.JSONObject(body)
-            o.getString("title") to o.optString("author_name")
-        }.getOrNull()
-    }
+    private suspend fun basicInfo(id: String): Pair<String, String>? =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { Fallback.oEmbed(id) }
+
 
     /** Saved position to resume from, in seconds (0 = start). */
     private fun resumeSec(video: Video): Long {

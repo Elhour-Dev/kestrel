@@ -267,6 +267,19 @@ object Fallback {
         Regex("\"clientVersion\":\"(7\\.[0-9.]+)\"").find(html)?.groupValues?.get(1)
     }.getOrNull()?.also { tvVer = it } ?: "7.20261102.18.00"
 
+    /** Title and channel name from YouTube's public oEmbed endpoint (some clients return no details). */
+    @Volatile private var oEmbedCache: Pair<String, Pair<String, String>?>? = null
+    fun oEmbed(id: String): Pair<String, String>? {
+        oEmbedCache?.takeIf { it.first == id }?.let { return it.second }
+        val r = runCatching {
+            val url = "https://www.youtube.com/oembed?format=json&url=https://www.youtube.com/watch?v=$id"
+            val o = Json.parseToJsonElement(Http.client.newCall(Request.Builder().url(url).build()).execute().use { it.body.string() }) as JsonObject
+            (o.str("title") ?: return@runCatching null) to o.str("author_name").orEmpty()
+        }.getOrNull()
+        oEmbedCache = id to r
+        return r
+    }
+
     /** Keeps a "links refused" error over others: it tells the caller this network blocks links. */
     private fun keepRefused(kept: Exception?, e: Exception) =
         if (kept?.message?.contains("refused") == true) kept else e
@@ -434,8 +447,8 @@ object Fallback {
         } else if (hls == null) error("${c.name}: no live stream")
         val v = Video(
             id = videoId,
-            title = d.str("title").orEmpty(),
-            channelName = d.str("author").orEmpty(),
+            title = d.str("title") ?: oEmbed(videoId)?.first.orEmpty(),
+            channelName = d.str("author") ?: oEmbed(videoId)?.second.orEmpty(),
             channelId = d.str("channelId"),
             thumbnail = d?.obj("thumbnail").thumb() ?: dev.kestrel.app.data.model.thumbFor(videoId),
             durationSec = d.str("lengthSeconds")?.toLongOrNull() ?: -1,

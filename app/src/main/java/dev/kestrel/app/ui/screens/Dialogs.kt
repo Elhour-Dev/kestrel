@@ -129,7 +129,7 @@ fun DownloadDialog(video: Video, onDismiss: () -> Unit) {
     LaunchedEffect(video.id) {
         try {
             val r = Streams.resolve(video.id)
-            full = r.video.copy(thumbnail = video.thumbnail.ifBlank { r.video.thumbnail })
+            full = r.video.copy(title = r.video.title.ifBlank { video.title }, channelName = r.video.channelName.ifBlank { video.channelName }, thumbnail = video.thumbnail.ifBlank { r.video.thumbnail })
             qualities = r.qualities()
             if (r.isLive) error = "Live streams can't be downloaded."
             val q = r.qualities()

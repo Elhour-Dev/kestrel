@@ -78,6 +78,14 @@ class Downloads(private val context: Context) {
         // Downloads interrupted by the app closing are paused, not lost.
         _items.update { list -> list.map { if (it.status == DlStatus.Running || it.status == DlStatus.Merging) it.copy(status = DlStatus.Paused) else it } }
         save()
+        // Some backup sources gave no title: fill those in once.
+        scope.launch {
+            for (d in _items.value.filter { it.video.title.isBlank() }) {
+                val (title, channel) = dev.kestrel.app.data.streams.Fallback.oEmbed(d.video.id) ?: continue
+                edit(d.id) { it.copy(video = it.video.copy(title = title, channelName = it.video.channelName.ifBlank { channel })) }
+            }
+            save()
+        }
     }
 
     private fun load(): List<DownloadItem> = try {
