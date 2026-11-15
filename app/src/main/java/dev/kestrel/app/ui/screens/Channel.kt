@@ -34,6 +34,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -101,7 +102,7 @@ private val tabOrder = listOf(ChannelTabs.VIDEOS to "Videos", ChannelTabs.SHORTS
 fun ChannelScreen(id: String) {
     var data by remember { mutableStateOf<NpRepo.ChannelData?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-    var attempt by remember { mutableStateOf(0) }
+    var attempt by remember { mutableIntStateOf(0) }
     LaunchedEffect(id, attempt) {
         error = null
         try { data = NpRepo.channel(id) } catch (e: Exception) { error = friendlyError(e) }
@@ -114,7 +115,7 @@ fun ChannelScreen(id: String) {
             d == null -> LoadingState()
             else -> {
                 val tabs = tabOrder.filter { it.first in d.tabs }
-                var tab by rememberSaveable { mutableStateOf(0) }
+                var tab by rememberSaveable { mutableIntStateOf(0) }
                 val header: androidx.compose.foundation.lazy.LazyListScope.() -> Unit = {
                     item {
                         Column {
@@ -277,7 +278,7 @@ fun PlaylistsScreen() {
     var remote by remember { mutableStateOf<List<Playlist>?>(null) }
     var remoteError by remember { mutableStateOf<String?>(null) }
     var creating by remember { mutableStateOf(false) }
-    var reload by remember { mutableStateOf(0) }
+    var reload by remember { mutableIntStateOf(0) }
     LaunchedEffect(reload) {
         if (signedIn) try { remote = Graph.innerTube.libraryPlaylists() } catch (e: Exception) { remoteError = friendlyError(e) }
     }
