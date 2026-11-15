@@ -430,14 +430,15 @@ object Fallback {
         val live = d.str("isLive") == "true"
         val hls = r.at("streamingData").str("hlsManifestUrl")
         val hlsOnly = audio.isEmpty() && hls != null
-        if (hlsOnly) {
-            // The manifest can load while the video segments are refused: check one segment too.
+        if (hlsOnly || (live && hls != null)) {
+            // The manifest can load while the video segments are refused: check one segment too,
+            // the way the player fetches it (live streams too: their links can be refused as well).
             fun get(u: String) = Http.client.newCall(Request.Builder().url(u).header("User-Agent", c.ua).build()).execute().use { if (it.isSuccessful) it.body.string() else null }
             val master = get(hls) ?: error("${c.name}: HLS refused")
             val segment = master.lineSequence().firstOrNull { it.startsWith("http") }?.let(::get)
                 ?.lineSequence()?.firstOrNull { it.startsWith("http") }
             if (segment != null) {
-                val seg = Http.client.newCall(Request.Builder().url(segment).header("User-Agent", c.ua).header("Range", "bytes=0-4095").build()).execute().use { it.code }
+                val seg = Http.client.newCall(Request.Builder().url(segment).header("User-Agent", Http.BROWSER_UA).build()).execute().use { it.code }
                 if (seg == 403) error("${c.name}: HLS segments refused (HTTP 403)")
             }
         } else if (!live) {
