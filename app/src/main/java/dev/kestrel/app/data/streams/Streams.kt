@@ -90,6 +90,10 @@ object Streams {
     /** Set when every source's links get refused here; videos go straight to the web player until then. */
     @Volatile var blockedUntil = 0L
     const val BLOCK_MS = 30 * 60_000L
+
+    /** Which source worked last (true = backup clients, false = NewPipe, null = not known yet).
+     *  Tried first next time: on some networks every backup client is refused and trying them first costs ~15 s. */
+    @Volatile var fallbackWorkedLast: Boolean? = null
     fun linksBlocked() = System.currentTimeMillis() < blockedUntil
 
     suspend fun resolve(videoId: String): Resolved {
@@ -114,8 +118,14 @@ object Streams {
         } catch (e: Exception) {
             fbError = e; null
         }
-        val r = if (preferFallback || signedIn) fallback() ?: newPipe() else newPipe() ?: fallback()
-        if (r != null) return r
+        val fallbackFirst = fallbackWorkedLast ?: (preferFallback || signedIn)
+        val t0 = System.currentTimeMillis()
+        val r = if (fallbackFirst) fallback() ?: newPipe() else newPipe() ?: fallback()
+        if (r != null) {
+            fallbackWorkedLast = r.viaFallback
+            android.util.Log.i("Kestrel", "${if (r.viaFallback) "backup clients" else "NewPipe"} gave links for $videoId in ${System.currentTimeMillis() - t0} ms")
+            return r
+        }
         // Every source was refused (HTTP 403 or bot check): this network blocks them for now.
         if (listOfNotNull(npError, fbError).all { it.isLinksRefused() || it.isBotCheck() }) {
             blockedUntil = System.currentTimeMillis() + BLOCK_MS
