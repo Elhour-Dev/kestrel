@@ -66,3 +66,13 @@ Then: commit, push, final report (root cause, techniques, fixes, tests, what's l
 - Root cause proven from the VPS itself: YouTube bot-blocks the VPS IP (and the second VPS). PO-token provider did not help; no IPv6.
 - Fix (on the VPS, not in the app): YouTube domains now leave the VPS through Cloudflare WARP; everything else unchanged.
   Notes + undo script are on the VPS in /root/warp (README.txt, rollback.sh). Verified: full 18.5 MB download from the PC through the VPN.
+- WARP egress is IPv6 only (WARP's IPv4 is bot-flagged too; mixed v4/v6 broke links). Inbound sniffing turns phone IP destinations into domains.
+- App fixes (builds 214-224, installed in place): Samsung TV client (no PO token needed) first; link check uses the player's 1 MB ranges;
+  "blocked" only when every source refuses; live checks one HLS segment; titles from oEmbed; next/prev in web notification;
+  skeleton loading; opaque player error; Settings > Network (app proxy + DoH); Home hides removed kiosks (Trending, podcasts);
+  12 compiler warnings fixed; CI workflow (was failing: setup-android 'tools', android-37.0 name, gradlew not executable).
+- Phone tests 2026-11-15 (build 222-224, VPN on): normal, long (26 min), live, Shorts+swipe, search+suggestions, comments+replies,
+  subscriptions, Watch later, like/unlike, quality switch, audio-only, fullscreen rotation, PiP, background (screen off),
+  notification pause/play, SponsorBlock intro skip, downloads (video+audio, parallel, resume, offline play), fresh install (debug app) signed out. No crashes/ANRs.
+- Not tested: posting/deleting comments (needs user OK), popup (needs "Appear on top" permission), updater (repo private),
+  low-network throttling, age-restricted this round. Seen twice right after install: first link on cold start not opened (not reproducible).
