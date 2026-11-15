@@ -127,7 +127,11 @@ fun HealthBanner() {
 fun HomeScreen() {
     val accountState by Graph.account.state.collectAsStateWithLifecycle()
     val signedIn = accountState == AccountState.SignedIn
-    val kiosks = remember { runCatching { NpRepo.kioskIds() }.getOrDefault(emptyList()).sortedBy { if (it.equals("Trending", true)) 0 else 1 } }
+    val kiosks = remember {
+        runCatching { NpRepo.kioskIds() }.getOrDefault(emptyList())
+            .filter { it !in BROKEN_KIOSKS }
+            .sortedBy { KIOSK_ORDER.indexOf(it).let { i -> if (i < 0) KIOSK_ORDER.size else i } }
+    }
     var source by remember(signedIn) { mutableStateOf(if (signedIn) "foryou" else kiosks.firstOrNull() ?: "") }
     Column {
         MainTopBar("Kestrel")
@@ -149,7 +153,17 @@ fun HomeScreen() {
     }
 }
 
-private fun kioskLabel(id: String) = id.replace('_', ' ').replaceFirstChar { it.uppercase() }
+/** YouTube removed its Trending page (2025); these kiosks no longer load (checked Nov 2026). */
+private val BROKEN_KIOSKS = setOf("Trending", "trending_podcasts_episodes")
+private val KIOSK_ORDER = listOf("trending_music", "trending_gaming", "trending_movies_and_shows", "live")
+
+private fun kioskLabel(id: String) = when (id) {
+    "trending_music" -> "Music"
+    "trending_gaming" -> "Gaming"
+    "trending_movies_and_shows" -> "Movies & shows"
+    "live" -> "Live"
+    else -> id.removePrefix("trending_").replace('_', ' ').replaceFirstChar { it.uppercase() }
+}
 
 @Composable
 fun SubscriptionsScreen() {

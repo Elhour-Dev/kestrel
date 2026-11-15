@@ -119,7 +119,7 @@ object NpRepo {
     data class KioskState(val url: String, val page: NpPage?)
 
     suspend fun kiosk(id: String? = null): Page<Item> = io {
-        val extractor = if (id == null) yt.kioskList.defaultKioskExtractor
+        val extractor = if (id == null) yt.kioskList.getExtractorById("trending_music", null) // the default (Trending) no longer loads
         else yt.kioskList.getExtractorById(id, null)
         extractor.fetchPage()
         val info = KioskInfo.getInfo(extractor)

@@ -7,6 +7,7 @@ import org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException
 import org.schabi.newpipe.extractor.exceptions.GeographicRestrictionException
 import org.schabi.newpipe.extractor.exceptions.PaidContentException
 import org.schabi.newpipe.extractor.exceptions.PrivateContentException
+import org.schabi.newpipe.extractor.exceptions.ParsingException
 import org.schabi.newpipe.extractor.exceptions.ReCaptchaException
 import java.io.IOException
 import java.net.SocketTimeoutException
@@ -31,6 +32,7 @@ fun friendlyError(e: Throwable): String {
         // NewPipe messages look like: Got error UNPLAYABLE: "reason". Show just the reason.
         has(ContentNotAvailableException::class.java) -> root.firstNotNullOfOrNull { c -> c.message?.let { Regex("\"(.+)\"").find(it)?.groupValues?.get(1) } }
             ?: e.message?.takeIf { it.length < 140 } ?: "This content isn't available."
+        has(ParsingException::class.java) -> "YouTube changed this page and it can't be read right now. Try again later; the daily update usually fixes it."
         has(IOException::class.java) -> "Network error. Check your connection and try again."
         else -> (e.message ?: e.javaClass.simpleName).take(160)
     }
