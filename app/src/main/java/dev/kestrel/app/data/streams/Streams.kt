@@ -266,12 +266,13 @@ object Fallback {
         Client("WEB", 1, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20261106.00.00") }, SAFARI_UA, mapOf("userAgent" to SAFARI_UA), web = true, auth = true),
     )
 
+    // Order matters: the anonymous loop stops after MAX_REFUSALS, and ANDROID_VR / IOS pass the bot check most often.
     private val clients = listOf(
         tvSamsung,
-        Client("WEB", 1, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20261106.00.00") }, Http.BROWSER_UA, web = true),
-        Client("MWEB", 2, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20261106.00.00") }, MWEB_UA, mapOf("userAgent" to MWEB_UA), web = true),
         Client("ANDROID_VR", 28, { VR_VERSION }, VR_UA, mapOf("deviceMake" to "Oculus", "deviceModel" to "Quest 3", "androidSdkVersion" to 32, "osName" to "Android", "osVersion" to "12L")),
         Client("IOS", 5, { "20.45.4" }, "com.google.ios.youtube/20.45.4 (iPhone16,2; U; CPU iOS 18_6 like Mac OS X;)", mapOf("deviceMake" to "Apple", "deviceModel" to "iPhone16,2", "osName" to "iPhone", "osVersion" to "18.6.0.22G86")),
+        Client("WEB", 1, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20261106.00.00") }, Http.BROWSER_UA, web = true),
+        Client("MWEB", 2, { runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeParsingHelper.getClientVersion() }.getOrDefault("2.20261106.00.00") }, MWEB_UA, mapOf("userAgent" to MWEB_UA), web = true),
         Client("VISIONOS", 101, { "0.1" }, "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15", mapOf("deviceMake" to "Apple", "deviceModel" to "RealityDevice14,1", "osName" to "visionOS", "osVersion" to "1.3.21O771")),
     )
 
@@ -306,7 +307,7 @@ object Fallback {
     private fun keepRefused(kept: Exception?, e: Exception) =
         if (kept?.isLinksRefused() == true) kept else e
 
-    /** After this many 403s or bot checks in one lookup the network is blocked: stop trying more clients. */
+    /** After this many 403s or bot checks among signed-out clients the network is blocked: stop trying more. */
     private const val MAX_REFUSALS = 3
 
     /** Index of the client that worked last time; tried first. */
@@ -336,7 +337,6 @@ object Fallback {
                 } catch (e: Exception) {
                     android.util.Log.w("Kestrel", "signed-in client ${c.name} failed: ${e.message}")
                     lastError = keepRefused(lastError, e)
-                    if ((e.isLinksRefused() || e.isBotCheck()) && ++refusals >= MAX_REFUSALS) throw lastError
                 }
             }
         }

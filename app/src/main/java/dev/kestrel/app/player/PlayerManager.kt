@@ -335,8 +335,9 @@ object PlayerManager {
                     channelName = r.video.channelName.ifBlank { video.channelName },
                     thumbnail = video.thumbnail.ifBlank { r.video.thumbnail },
                 )
-                _now.update { it?.copy(video = v, resolved = r.copy(video = v), loading = false) }
-                rebuild(r, keepPosition = false)
+                val rv = r.copy(video = v)
+                _now.update { it?.copy(video = v, resolved = rv, loading = false) }
+                rebuild(rv, keepPosition = false)
                 Graph.store.addHistory(v)
                 reportHistory(v.id)
                 loadSegments(v.id)

@@ -82,3 +82,7 @@ Then: commit, push, final report (root cause, techniques, fixes, tests, what's l
   relaunch no longer replays an old link. VPS: /root/warp/apply_warp.py re-applies (idempotent), working copies in /root/warp/working.
 - Tests on 225-228: normal, long, live (ANDROID_VR), music (NewPipe after TV 403s), age-restricted signed in (web player), 720p download+merge,
   light theme, DoH on (debug app), blocked IP via SOCKS tunnel + app proxy (debug app): clear bot-check message, 6 s on 2nd video, ~40 s on 1st.
+- Round 3 (build 229): signed-out client order TV, ANDROID_VR, IOS first (early stop no longer skips them); signed-in loop never stops early;
+  bot-check text checked before the player-error box and only while the video hasn't loaded; notification gets the fallback title;
+  Recents relaunch doesn't replay a link; DoH bootstrap 3-5 s timeout; daily job holds back (no commit, no release) an extractor bump when stream tests were skipped.
+- Known: right after `adb install -r` + force-stop, the first link opened can play the previously opened video (seen 3x; dev-only path).

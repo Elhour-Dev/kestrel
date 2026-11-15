@@ -57,7 +57,8 @@ object Http {
         proxy?.let { b.proxy(it) }
         // DNS over HTTPS skips a poisoned local resolver. Not needed with a SOCKS proxy (it resolves names).
         if (doh && proxy?.type() != Proxy.Type.SOCKS) {
-            val bootstrap = OkHttpClient.Builder().apply { proxy?.let { proxy(it) } }.build()
+            val bootstrap = OkHttpClient.Builder().apply { proxy?.let { proxy(it) } }
+                .connectTimeout(3, TimeUnit.SECONDS).callTimeout(5, TimeUnit.SECONDS).build()
             val doh = DnsOverHttps.Builder().client(bootstrap)
                 .url("https://cloudflare-dns.com/dns-query".toHttpUrl())
                 .bootstrapDnsHosts(InetAddress.getByName("1.1.1.1"), InetAddress.getByName("1.0.0.1"))

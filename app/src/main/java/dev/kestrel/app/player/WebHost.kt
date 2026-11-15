@@ -35,14 +35,14 @@ object WebHost {
       'video{position:fixed!important;top:0!important;left:0!important;right:0!important;bottom:0!important;width:100%!important;height:100%!important;object-fit:contain!important;z-index:10000!important}';
     document.head.appendChild(s);
   }
+    var v = document.querySelector('video');
+    // YouTube's bot check page ("Sign in to confirm you're not a bot"): reloading won't help.
+    if (!window.kestrelErr && (!v || v.readyState < 2) && document.body && /confirm you.{0,3}re not a bot/i.test(document.body.textContent || '')) {
+      window.kestrelErr = true; KWeb.botCheck();
+    }
     if (!window.kestrelErr && document.querySelector('.ytp-error,.ytp-error-content-wrap,ytm-player-error-message-renderer,.player-error-message')) {
       window.kestrelErr = true; KWeb.error();
     }
-    // YouTube's bot check page ("Sign in to confirm you're not a bot"): reloading won't help.
-    if (!window.kestrelErr && document.body && /confirm you.{0,3}re not a bot/i.test(document.body.innerText || '')) {
-      window.kestrelErr = true; KWeb.botCheck();
-    }
-    var v = document.querySelector('video');
     if (!v) return;
     if (!v.kestrelHooked) {
       v.kestrelHooked = true;

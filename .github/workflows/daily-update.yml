@@ -72,11 +72,14 @@ jobs:
             echo "Smoke tests skipped: stream/download could not be checked from GitHub's network." >> "$GITHUB_STEP_SUMMARY"
             TITLE="Daily smoke tests skipped"
             NUM=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number')
-            [ -n "$NUM" ] || gh issue create --title "$TITLE" --body "YouTube's bot check skipped the stream/download smoke tests on the GitHub runner, so the daily job can't prove playback works. Run the tests locally to check. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            HELD=""
+            [ "${{ steps.bump.outputs.changed }}" = "true" ] && HELD=" NewPipeExtractor ${{ steps.bump.outputs.version }} is available but was NOT committed or released; update it by hand after testing locally."
+            [ -n "$NUM" ] || gh issue create --title "$TITLE" --body "YouTube's bot check skipped the stream/download smoke tests on the GitHub runner, so the daily job can't prove playback works.$HELD Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi
 
       - name: Commit the update
-        if: steps.bump.outputs.changed == 'true'
+        # Held back when the stream tests were skipped; it is retried every day until they really run.
+        if: steps.bump.outputs.changed == 'true' && steps.skips.outputs.skipped != 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
