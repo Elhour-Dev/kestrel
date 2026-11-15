@@ -40,7 +40,7 @@ jobs:
           packages: platform-tools
 
       - name: Install Android SDK parts
-        run: sdkmanager "platforms;android-37" "build-tools;36.0.0" > /dev/null
+        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0" > /dev/null
 
       - uses: gradle/actions/setup-gradle@v5
 
