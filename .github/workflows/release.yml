@@ -47,7 +47,8 @@ jobs:
 
       - name: Version
         run: |
-          CODE=$(( $(git rev-list --count HEAD) + 100 ))
+          # Offset keeps CI builds above the locally built test versions (up to ~230).
+          CODE=$(( $(git rev-list --count HEAD) + 300 ))
           echo "CODE=$CODE" >> "$GITHUB_ENV"
           if gh release view "v1.$CODE" > /dev/null 2>&1; then
             echo "Release v1.$CODE already exists, nothing to do."

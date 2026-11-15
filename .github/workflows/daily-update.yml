@@ -57,6 +57,18 @@ jobs:
       - name: Smoke tests (search, stream, download, SponsorBlock)
         run: ./gradlew :app:testDebugUnitTest --tests '*SmokeTest*' --console=plain
 
+      - name: Flag skipped smoke tests
+        # A bot check on GitHub's network skips the stream/download tests. Say so instead of looking green.
+        run: |
+          SKIPPED=$(grep -l "<skipped" app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | wc -l)
+          if [ "$SKIPPED" -gt 0 ]; then
+            echo "::warning::Some smoke tests were skipped (YouTube bot check on this runner)."
+            echo "Smoke tests skipped: stream/download could not be checked from GitHub's network." >> "$GITHUB_STEP_SUMMARY"
+            TITLE="Daily smoke tests skipped"
+            NUM=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number')
+            [ -n "$NUM" ] || gh issue create --title "$TITLE" --body "YouTube's bot check skipped the stream/download smoke tests on the GitHub runner, so the daily job can't prove playback works. Run the tests locally to check. Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          fi
+
       - name: Commit the update
         if: steps.bump.outputs.changed == 'true'
         run: |
