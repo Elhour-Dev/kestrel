@@ -1,6 +1,10 @@
 package dev.kestrel.app.ui.theme
 
+import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -62,6 +66,16 @@ fun KestrelTheme(mode: String, content: @Composable () -> Unit) {
         "dark" -> true
         "light" -> false
         else -> isSystemInDarkTheme()
+    }
+    // Status/navigation bar icons follow the app theme, not the phone's (light app on a dark phone).
+    val view = LocalView.current
+    if (!view.isInEditMode) SideEffect {
+        (view.context as? Activity)?.window?.let { w ->
+            WindowCompat.getInsetsController(w, view).apply {
+                isAppearanceLightStatusBars = !dark
+                isAppearanceLightNavigationBars = !dark
+            }
+        }
     }
     MaterialTheme(colorScheme = if (dark) Dark else Light, typography = Type, content = content)
 }

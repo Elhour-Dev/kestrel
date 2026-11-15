@@ -38,6 +38,10 @@ object WebHost {
     if (!window.kestrelErr && document.querySelector('.ytp-error,.ytp-error-content-wrap,ytm-player-error-message-renderer,.player-error-message')) {
       window.kestrelErr = true; KWeb.error();
     }
+    // YouTube's bot check page ("Sign in to confirm you're not a bot"): reloading won't help.
+    if (!window.kestrelErr && document.body && /confirm you.{0,3}re not a bot/i.test(document.body.innerText || '')) {
+      window.kestrelErr = true; KWeb.botCheck();
+    }
     var v = document.querySelector('video');
     if (!v) return;
     if (!v.kestrelHooked) {
@@ -78,6 +82,9 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
     var onCrash: (() -> Unit)? = null
     /** Called on the main thread when YouTube's page shows its own player error ("Something went wrong"). */
     var onError: (() -> Unit)? = null
+
+    /** Called on the main thread when the page shows YouTube's bot check instead of the video. */
+    var onBotCheck: (() -> Unit)? = null
     /** Called on the main thread when play/pause, duration or the video changes. */
     var onChange: (() -> Unit)? = null
 
@@ -127,6 +134,10 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
                 @JavascriptInterface
                 fun error() {
                     main.post { onError?.invoke() }
+                }
+                @JavascriptInterface
+                fun botCheck() {
+                    main.post { onBotCheck?.invoke() }
                 }
                 @JavascriptInterface
                 fun ended() {

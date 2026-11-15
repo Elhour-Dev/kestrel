@@ -26,7 +26,7 @@ Done (commits 7771b3c, 85042a4, e96b075 + uncommitted WebHost PAGE_JS change):
 - Streams.linkWorks(url): start + past-1MB check, shared by player, Fallback and Health. Sets blockedUntil.
 - Fallback: HLS-only clients now probe one segment; stop trying clients once blocked; no double Fallback run.
 - Health TEST_VIDEO = M7lc1UVf-VE (audio > 1 MB; old one was too small to see the cap).
-- Removed PotCapture.kt (proven useless). Media3 1.11.1, AGP 9.5.1. Zero compiler warnings.
+- Removed PotCapture.kt (proven useless). Media3 1.11.1, AGP 9.5.1. Zero compiler warnings (again after 2026-11-15 fixes).
 - Web mode: WebSessionPlayer (SimpleBasePlayer) in PlaybackService -> notification + foreground;
   WebView parked 1x1 in MainActivity when no screen shows it; onWindowVisibilityChanged forced VISIBLE.
   => background play works (tested 60 s after Home), PiP works, mini player works.
@@ -76,3 +76,9 @@ Then: commit, push, final report (root cause, techniques, fixes, tests, what's l
   notification pause/play, SponsorBlock intro skip, downloads (video+audio, parallel, resume, offline play), fresh install (debug app) signed out. No crashes/ANRs.
 - Not tested: posting/deleting comments (needs user OK), popup (needs "Appear on top" permission), updater (repo private),
   low-network throttling, age-restricted this round. Seen twice right after install: first link on cold start not opened (not reproducible).
+- Round 2 (builds 225-228): 403 = LinksRefusedException; network marked blocked only when every source is refused or bot-checked;
+  fallback stops after 3 refusals/bot checks; web page bot-check detected (clear message instead of black video);
+  light-theme status bar icons fixed; avatar button labelled; daily job won't release when stream tests were skipped;
+  relaunch no longer replays an old link. VPS: /root/warp/apply_warp.py re-applies (idempotent), working copies in /root/warp/working.
+- Tests on 225-228: normal, long, live (ANDROID_VR), music (NewPipe after TV 403s), age-restricted signed in (web player), 720p download+merge,
+  light theme, DoH on (debug app), blocked IP via SOCKS tunnel + app proxy (debug app): clear bot-check message, 6 s on 2nd video, ~40 s on 1st.

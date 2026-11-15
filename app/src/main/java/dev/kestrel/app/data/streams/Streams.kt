@@ -78,6 +78,11 @@ class LinksRefusedException(msg: String) : java.io.IOException(msg)
 
 fun Throwable.isLinksRefused() = generateSequence(this) { it.cause }.any { it is LinksRefusedException }
 
+/** YouTube's bot check ("confirm you're not a bot"): like a refusal, it is about this network, not the video. */
+fun Throwable.isBotCheck() = generateSequence(this) { it.cause }.any {
+    it.javaClass.simpleName.contains("NotBot") || it.message?.contains("not a bot") == true
+}
+
 object Streams {
     /** Forces the fallback client. Set by the startup health check when NewPipe streams fail. */
     @Volatile var preferFallback = false
@@ -111,8 +116,8 @@ object Streams {
         }
         val r = if (preferFallback || signedIn) fallback() ?: newPipe() else newPipe() ?: fallback()
         if (r != null) return r
-        // Every source's links were refused (HTTP 403): this network blocks them for now.
-        if (listOfNotNull(npError, fbError).all { it.isLinksRefused() }) {
+        // Every source was refused (HTTP 403 or bot check): this network blocks them for now.
+        if (listOfNotNull(npError, fbError).all { it.isLinksRefused() || it.isBotCheck() }) {
             blockedUntil = System.currentTimeMillis() + BLOCK_MS
         }
         // NewPipe's errors say best why a video can't play (private, age, region...).
@@ -301,7 +306,7 @@ object Fallback {
     private fun keepRefused(kept: Exception?, e: Exception) =
         if (kept?.isLinksRefused() == true) kept else e
 
-    /** After this many 403s in one lookup the network is blocked: stop trying more clients. */
+    /** After this many 403s or bot checks in one lookup the network is blocked: stop trying more clients. */
     private const val MAX_REFUSALS = 3
 
     /** Index of the client that worked last time; tried first. */
@@ -331,7 +336,7 @@ object Fallback {
                 } catch (e: Exception) {
                     android.util.Log.w("Kestrel", "signed-in client ${c.name} failed: ${e.message}")
                     lastError = keepRefused(lastError, e)
-                    if (e.isLinksRefused() && ++refusals >= MAX_REFUSALS) throw lastError
+                    if ((e.isLinksRefused() || e.isBotCheck()) && ++refusals >= MAX_REFUSALS) throw lastError
                 }
             }
         }
@@ -351,7 +356,7 @@ object Fallback {
                 } catch (e: Exception) {
                     android.util.Log.w("Kestrel", "backup client ${c.name} failed (round $round): ${e.message}")
                     lastError = keepRefused(lastError, e)
-                    if (e.isLinksRefused() && ++refusals >= MAX_REFUSALS) throw lastError
+                    if ((e.isLinksRefused() || e.isBotCheck()) && ++refusals >= MAX_REFUSALS) throw lastError
                 }
             }
         }

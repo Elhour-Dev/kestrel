@@ -41,7 +41,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        Ui.pendingIntent = intent
+        if (savedInstanceState == null) Ui.pendingIntent = intent
         setContent {
             val theme by Graph.settings.theme.flow.collectAsStateWithLifecycle()
             KestrelTheme(theme) {

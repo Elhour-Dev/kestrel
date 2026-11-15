@@ -1,5 +1,8 @@
 package dev.kestrel.app.ui.screens
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -100,7 +103,8 @@ fun MainTopBar(title: String) {
             IconButton(onClick = { nav.go("search") }) { Icon(Icons.Default.Search, "Search") }
             IconButton(onClick = { nav.go("settings") }) {
                 val avatar = session?.avatar
-                if (!avatar.isNullOrBlank()) Avatar(avatar, 28) else Icon(Icons.Default.Settings, "Settings")
+                if (!avatar.isNullOrBlank()) Box(Modifier.semantics { contentDescription = "Settings" }) { Avatar(avatar, 28) }
+                else Icon(Icons.Default.Settings, "Settings")
             }
         },
     )

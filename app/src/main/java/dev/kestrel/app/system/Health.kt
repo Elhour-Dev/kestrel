@@ -106,10 +106,8 @@ object Health {
             Streams.preferFallback = false
             return CheckResult(Feature.Streams, true, "OK")
         }
-        if (Streams.linksBlocked()) return webPlayer()
         heal()
         if (runCatching { np() }.getOrDefault(false)) return CheckResult(Feature.Streams, true, "Fixed after refresh")
-        if (Streams.linksBlocked()) return webPlayer()
         if (runCatching { canFetch(Fallback.resolve(TEST_VIDEO)) }.getOrDefault(false)) {
             Streams.preferFallback = true
             return CheckResult(Feature.Streams, true, "Using backup video source")

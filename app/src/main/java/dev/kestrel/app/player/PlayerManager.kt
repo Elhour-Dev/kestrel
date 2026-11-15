@@ -124,6 +124,13 @@ object PlayerManager {
                 }
             }
         }
+        WebHost.onBotCheck = {
+            if (_now.value?.web == true) {
+                WebHost.release()
+                val hint = if (Graph.account.isSignedIn) "Try another VPN server." else "Sign in with Google (Library > Sign in) or try another VPN server."
+                _now.update { it?.copy(web = false, loading = false, error = "YouTube is blocking video on this network (bot check). $hint") }
+            }
+        }
         WebHost.onCrash = {
             _now.update { if (it?.web == true) it.copy(web = false, loading = false, error = "The video player stopped. Try again.") else it }
         }
