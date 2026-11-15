@@ -73,6 +73,11 @@ data class Resolved(
     fun qualities(): List<Int> = videoOnly.ifEmpty { muxed }.map { it.height }.distinct().sortedDescending()
 }
 
+/** YouTube answered HTTP 403 for links it just handed out: this network (IP) is refused. */
+class LinksRefusedException(msg: String) : java.io.IOException(msg)
+
+fun Throwable.isLinksRefused() = generateSequence(this) { it.cause }.any { it is LinksRefusedException }
+
 object Streams {
     /** Forces the fallback client. Set by the startup health check when NewPipe streams fail. */
     @Volatile var preferFallback = false
@@ -90,7 +95,7 @@ object Streams {
         var fbError: Exception? = null
         suspend fun newPipe(): Resolved? = try {
             val r = fixLinks(fromNewPipe(NpRepo.stream(videoId)))
-            if (!linksWork(r)) throw java.io.IOException("Stream links refused")
+            linksCheck(r)
             r
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -106,19 +111,28 @@ object Streams {
         }
         val r = if (preferFallback || signedIn) fallback() ?: newPipe() else newPipe() ?: fallback()
         if (r != null) return r
-        // Links were handed out but refused: this network blocks them for now.
-        if (listOfNotNull(npError, fbError).any { it.message?.contains("refused") == true }) {
+        // Every source's links were refused (HTTP 403): this network blocks them for now.
+        if (listOfNotNull(npError, fbError).all { it.isLinksRefused() }) {
             blockedUntil = System.currentTimeMillis() + BLOCK_MS
         }
         // NewPipe's errors say best why a video can't play (private, age, region...).
         throw npError ?: fbError ?: IllegalStateException("No video source worked")
     }
 
-    /** Checks YouTube really serves one of [r]'s links. */
-    private suspend fun linksWork(r: Resolved): Boolean = withContext(Dispatchers.IO) {
-        if (r.video.isLive || !JsSolver.available) return@withContext true
-        val url = r.pickAudio()?.url ?: r.pickVideo(360)?.url ?: return@withContext true
-        runCatching { linkWorks(url) }.getOrDefault(true) // network trouble: let the player retry instead
+    /** Checks YouTube really serves one of [r]'s links; throws when it doesn't. */
+    private suspend fun linksCheck(r: Resolved) = withContext(Dispatchers.IO) {
+        if (r.video.isLive || !JsSolver.available) return@withContext
+        val url = r.pickAudio()?.url ?: r.pickVideo(360)?.url ?: return@withContext
+        // Network trouble (exception): let the player retry instead.
+        val code = runCatching { linkStatus(url) }.getOrDefault(200)
+        checkLink("Stream", code)
+    }
+
+    /** Throws for a failed link check: [LinksRefusedException] for 403, a plain IOException otherwise. */
+    fun checkLink(what: String, code: Int) {
+        if (code in 200..299) return
+        if (code == 403) throw LinksRefusedException("$what links refused (HTTP 403)")
+        throw java.io.IOException("$what links failed (HTTP $code)")
     }
 
     /**
@@ -126,15 +140,18 @@ object Streams {
      * Only the status is read, not the bytes. Small ranges are not enough: without a good streaming
      * token YouTube serves a few KB and then refuses the player's 1 MB requests.
      */
-    fun linkWorks(url: String): Boolean {
+    fun linkWorks(url: String): Boolean = linkStatus(url) in 200..299
+
+    /** HTTP status of the first failing chunk, or the last status when both chunks are served. */
+    fun linkStatus(url: String): Int {
         val chunk = dev.kestrel.app.player.YtDataSource.CHUNK
-        val clen = Regex("[?&]clen=(\\d+)").find(url)?.groupValues?.get(1)?.toLongOrNull()
+        val clen = Regex("[?&]clen=(\\d+)").find(url)?.groupValues?.get(1)?.toLongOrNull()?.takeIf { it > 0 }
         fun code(from: Long, to: Long, rn: Int) =
             Http.client.newCall(dev.kestrel.app.player.YtDataSource.rangedRequest(url, from, to, rn)).execute().use { it.code }
-        if (code(0, (clen?.coerceAtMost(chunk) ?: chunk) - 1, 1) !in 200..299) return false
-        if (clen != null && clen <= chunk) return true
+        val first = code(0, (clen?.coerceAtMost(chunk) ?: chunk) - 1, 1)
+        if (first !in 200..299 || (clen != null && clen <= chunk)) return first
         val end = clen?.coerceAtMost(2 * chunk) ?: (2 * chunk)
-        return code(chunk, end - 1, 2) in 200..299
+        return code(chunk, end - 1, 2)
     }
 
     @Volatile private var npCheck: Pair<Long, Boolean>? = null
@@ -276,13 +293,16 @@ object Fallback {
             val o = Json.parseToJsonElement(Http.client.newCall(Request.Builder().url(url).build()).execute().use { it.body.string() }) as JsonObject
             (o.str("title") ?: return@runCatching null) to o.str("author_name").orEmpty()
         }.getOrNull()
-        oEmbedCache = id to r
+        if (r != null) oEmbedCache = id to r
         return r
     }
 
     /** Keeps a "links refused" error over others: it tells the caller this network blocks links. */
     private fun keepRefused(kept: Exception?, e: Exception) =
-        if (kept?.message?.contains("refused") == true) kept else e
+        if (kept?.isLinksRefused() == true) kept else e
+
+    /** After this many 403s in one lookup the network is blocked: stop trying more clients. */
+    private const val MAX_REFUSALS = 3
 
     /** Index of the client that worked last time; tried first. */
     @Volatile private var preferred = 0
@@ -297,6 +317,7 @@ object Fallback {
         val sts = (if (JsSolver.available) JsSolver.signatureTimestamp() else null)
             ?: runCatching { org.schabi.newpipe.extractor.services.youtube.YoutubeJavaScriptPlayerManager.getSignatureTimestamp(videoId) }.getOrNull()
         var lastError: Exception? = null
+        var refusals = 0
         val session = dev.kestrel.app.Graph.account.session.value
         if (session != null) {
             val ds = session.dataSyncId.substringBefore("||").ifBlank { null }
@@ -310,6 +331,7 @@ object Fallback {
                 } catch (e: Exception) {
                     android.util.Log.w("Kestrel", "signed-in client ${c.name} failed: ${e.message}")
                     lastError = keepRefused(lastError, e)
+                    if (e.isLinksRefused() && ++refusals >= MAX_REFUSALS) throw lastError
                 }
             }
         }
@@ -329,6 +351,7 @@ object Fallback {
                 } catch (e: Exception) {
                     android.util.Log.w("Kestrel", "backup client ${c.name} failed (round $round): ${e.message}")
                     lastError = keepRefused(lastError, e)
+                    if (e.isLinksRefused() && ++refusals >= MAX_REFUSALS) throw lastError
                 }
             }
         }
@@ -433,18 +456,21 @@ object Fallback {
         if (hlsOnly || (live && hls != null)) {
             // The manifest can load while the video segments are refused: check one segment too,
             // the way the player fetches it (live streams too: their links can be refused as well).
-            fun get(u: String) = Http.client.newCall(Request.Builder().url(u).header("User-Agent", c.ua).build()).execute().use { if (it.isSuccessful) it.body.string() else null }
-            val master = get(hls) ?: error("${c.name}: HLS refused")
+            fun get(u: String): String = Http.client.newCall(Request.Builder().url(u).header("User-Agent", c.ua).build()).execute().use {
+                Streams.checkLink("${c.name}: HLS", it.code)
+                it.body.string()
+            }
+            val master = get(hls)
             val segment = master.lineSequence().firstOrNull { it.startsWith("http") }?.let(::get)
                 ?.lineSequence()?.firstOrNull { it.startsWith("http") }
             if (segment != null) {
                 val seg = Http.client.newCall(Request.Builder().url(segment).header("User-Agent", Http.BROWSER_UA).build()).execute().use { it.code }
-                if (seg == 403) error("${c.name}: HLS segments refused (HTTP 403)")
+                Streams.checkLink("${c.name}: HLS segment", seg)
             }
         } else if (!live) {
             // Make sure the links really download before trusting this client.
             val probe = audio.firstOrNull { it.ext == "m4a" } ?: audio.firstOrNull() ?: error("${c.name}: no audio (fmts=${raw.size} urls=${raw.count { it.str("url") != null }} cipher=${raw.count { it.str("signatureCipher") != null }} sabr=${r.at("streamingData").str("serverAbrStreamingUrl") != null})")
-            if (!Streams.linkWorks(probe.url)) error("${c.name}: stream links refused")
+            Streams.checkLink("${c.name}: stream", Streams.linkStatus(probe.url))
         } else if (hls == null) error("${c.name}: no live stream")
         val v = Video(
             id = videoId,

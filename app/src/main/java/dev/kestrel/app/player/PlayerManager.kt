@@ -323,8 +323,12 @@ object PlayerManager {
                     _now.update { it?.copy(loading = false, error = "The connection timed out. Check your network or VPN and try again.") }
                     return@launch
                 }
-                val v = r.video.copy(thumbnail = video.thumbnail.ifBlank { r.video.thumbnail })
-                _now.update { it?.copy(video = v, resolved = r, loading = false) }
+                val v = r.video.copy(
+                    title = r.video.title.ifBlank { video.title },
+                    channelName = r.video.channelName.ifBlank { video.channelName },
+                    thumbnail = video.thumbnail.ifBlank { r.video.thumbnail },
+                )
+                _now.update { it?.copy(video = v, resolved = r.copy(video = v), loading = false) }
                 rebuild(r, keepPosition = false)
                 Graph.store.addHistory(v)
                 reportHistory(v.id)

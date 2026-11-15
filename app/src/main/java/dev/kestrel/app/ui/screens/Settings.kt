@@ -152,7 +152,7 @@ private fun ProxyRow(pref: Pref<String>) {
             title = { Text("App proxy") },
             text = {
                 Column {
-                    Text("For example socks5://127.0.0.1:10808 (v2rayNG's local port) or http://host:port. Leave empty to turn off. Applies after restart.", style = MaterialTheme.typography.bodySmall)
+                    Text("For example socks5://127.0.0.1:10808 (v2rayNG's local port) or http://host:port. No user/password. Leave empty to turn off. Applies after the app fully restarts (stop playback, then swipe the app away).", style = MaterialTheme.typography.bodySmall)
                     OutlinedTextField(
                         text, { text = it }, Modifier.fillMaxWidth().padding(top = 12.dp), singleLine = true,
                         isError = !valid, placeholder = { Text("socks5://127.0.0.1:10808") },

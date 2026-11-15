@@ -1,6 +1,7 @@
 package dev.kestrel.app.data.net
 
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.dnsoverhttps.DnsOverHttps
 import java.net.InetAddress
@@ -28,7 +29,8 @@ object Http {
     /** "socks5://host:port" or "http://host:port", else null. Host names resolve on the proxy. */
     fun parseProxy(url: String): Proxy? {
         val u = runCatching { URI(url.trim()) }.getOrNull() ?: return null
-        val host = u.host ?: return null
+        if (u.userInfo != null) return null // user/password proxies are not supported
+        val host = u.host?.removePrefix("[")?.removeSuffix("]") ?: return null
         if (u.port !in 1..65535) return null
         val type = when (u.scheme?.lowercase()) {
             "socks", "socks5", "socks5h" -> Proxy.Type.SOCKS
@@ -36,6 +38,14 @@ object Http {
             else -> return null
         }
         return Proxy(type, InetSocketAddress.createUnresolved(host, u.port))
+    }
+
+    /** The same proxy as a WebView rule ("socks5://host:port" / "http://host:port"), or null. */
+    fun webViewRule(url: String): String? {
+        val p = parseProxy(url) ?: return null
+        val a = p.address() as InetSocketAddress
+        val host = if (a.hostString.contains(':')) "[${a.hostString}]" else a.hostString
+        return (if (p.type() == Proxy.Type.SOCKS) "socks5" else "http") + "://" + host + ":" + a.port
     }
 
     val client: OkHttpClient by lazy {
@@ -48,12 +58,12 @@ object Http {
         // DNS over HTTPS skips a poisoned local resolver. Not needed with a SOCKS proxy (it resolves names).
         if (doh && proxy?.type() != Proxy.Type.SOCKS) {
             val bootstrap = OkHttpClient.Builder().apply { proxy?.let { proxy(it) } }.build()
-            b.dns(
-                DnsOverHttps.Builder().client(bootstrap)
-                    .url("https://cloudflare-dns.com/dns-query".toHttpUrl())
-                    .bootstrapDnsHosts(InetAddress.getByName("1.1.1.1"), InetAddress.getByName("1.0.0.1"))
-                    .build(),
-            )
+            val doh = DnsOverHttps.Builder().client(bootstrap)
+                .url("https://cloudflare-dns.com/dns-query".toHttpUrl())
+                .bootstrapDnsHosts(InetAddress.getByName("1.1.1.1"), InetAddress.getByName("1.0.0.1"))
+                .build()
+            // If DoH itself is blocked, fall back to the normal resolver instead of failing every request.
+            b.dns { host -> runCatching { doh.lookup(host) }.getOrNull()?.takeIf { it.isNotEmpty() } ?: Dns.SYSTEM.lookup(host) }
         }
         b.build()
     }

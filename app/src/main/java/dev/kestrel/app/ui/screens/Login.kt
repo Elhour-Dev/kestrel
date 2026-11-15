@@ -193,6 +193,11 @@ private fun LoginWebView(desktop: Boolean, onLoading: (Boolean) -> Unit, onDone:
                         .build(),
                 )
             }
+            // Google spots embedded WebViews by this header; don't send it.
+            @Suppress("DEPRECATION")
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.REQUESTED_WITH_HEADER_ALLOW_LIST)) {
+                WebSettingsCompat.setRequestedWithHeaderOriginAllowList(settings, emptySet())
+            }
             cm.setAcceptCookie(true)
             cm.setAcceptThirdPartyCookies(this, true)
             webViewClient = object : WebViewClient() {

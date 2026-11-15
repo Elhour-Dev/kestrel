@@ -55,12 +55,11 @@ class KestrelApp : Application(), SingletonImageLoader.Factory {
     private fun applyNetworkSettings() {
         val proxy = Graph.settings.proxy.value.trim()
         Http.configure(proxy, Graph.settings.dnsOverHttps.value)
-        if (Http.parseProxy(proxy) != null && WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
+        val rule = Http.webViewRule(proxy)
+        if (rule != null && WebViewFeature.isFeatureSupported(WebViewFeature.PROXY_OVERRIDE)) {
             runCatching {
-                ProxyController.getInstance().setProxyOverride(
-                    ProxyConfig.Builder().addProxyRule(proxy.replace("socks5h://", "socks5://")).build(), { it.run() }, {},
-                )
-            }
+                ProxyController.getInstance().setProxyOverride(ProxyConfig.Builder().addProxyRule(rule).build(), { it.run() }, {})
+            }.onFailure { android.util.Log.w("Kestrel", "WebView proxy not applied", it) }
         }
     }
 

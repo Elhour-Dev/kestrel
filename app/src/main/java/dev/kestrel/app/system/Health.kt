@@ -94,7 +94,7 @@ object Health {
         return CheckResult(Feature.Search, false, "Search isn't working right now. Library and downloads still work.")
     }
 
-    /** Same link check the player uses (start and past 1 MB). */
+    /** Same link check the player uses (its first two 1 MB chunks). */
     private fun canFetch(r: Resolved): Boolean {
         val url = r.pickAudio()?.url ?: r.pickVideo(360)?.url ?: return r.hls != null
         return Streams.linkWorks(url)
