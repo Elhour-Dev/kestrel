@@ -6,6 +6,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
+import dev.kestrel.app.player.JumpAhead
+import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -253,11 +255,30 @@ fun PlayerControls(np: NowPlaying, activity: MainActivity, fullscreen: Boolean, 
                         color = Color.White, style = MaterialTheme.typography.labelLarge)
                     if (speed != 1f) Text("${trim(speed)}x", Modifier.padding(start = 6.dp).clip(RoundedCornerShape(50)).background(Dim).padding(horizontal = 8.dp, vertical = 4.dp),
                         color = Color.White, style = MaterialTheme.typography.labelLarge)
+                    val heat = np.info?.heat.orEmpty()
+                    val jump = remember(heat, pos / 5_000) { JumpAhead.next(heat, pos) }
+                    if (jump != null && dur > 0) Text("Jump ahead", Modifier.padding(start = 6.dp).clip(RoundedCornerShape(50)).background(Dim)
+                        .clickable { PlayerManager.seekTo(jump); poke() }.padding(horizontal = 10.dp, vertical = 4.dp),
+                        color = Color.White, style = MaterialTheme.typography.labelLarge)
                     Spacer(Modifier.weight(1f))
                     OverlayIcon(if (fullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen, if (fullscreen) "Exit fullscreen" else "Fullscreen") {
                         activity.setFullscreen(!fullscreen)
                     }
                 }
+            }
+        }
+
+        // "Most replayed" graph above the bar while scrubbing.
+        val heat = np.info?.heat.orEmpty()
+        if (dragFraction != null && heat.isNotEmpty() && dur > 0) {
+            Canvas(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(40.dp).padding(bottom = if (fullscreen) 34.dp else 14.dp)) {
+                val path = Path().apply {
+                    moveTo(0f, size.height)
+                    heat.forEach { lineTo((it.startMs.toFloat() / dur).coerceIn(0f, 1f) * size.width, size.height * (1f - it.intensity.coerceIn(0f, 1f))) }
+                    lineTo(size.width, size.height)
+                    close()
+                }
+                drawPath(path, Color.White.copy(alpha = 0.35f))
             }
         }
 

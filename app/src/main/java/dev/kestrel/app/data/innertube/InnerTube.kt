@@ -227,6 +227,8 @@ class InnerTube(private val account: AccountStore) {
         /** What YouTube's own Subscribe button sends along (null when not found). */
         val subscribeParams: String?,
         val related: List<Item>,
+        /** YouTube's "most replayed" graph (empty when the video has none). */
+        val heat: List<dev.kestrel.app.player.HeatPoint> = emptyList(),
     )
 
     /** The watch page's details. Signed in, it also has the like/subscribe state and the bell options. */
@@ -317,6 +319,11 @@ class InnerTube(private val account: AccountStore) {
             subscribeParams = r.findAll("subscribeEndpoint").firstOrNull()?.str("params")
                 ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) },
             related = if (secondary != null) Parser.items(secondary) else emptyList(),
+            heat = r.findAll("macroMarkersListEntity").firstOrNull { it.at("markersList.markerType").let { t -> (t as? kotlinx.serialization.json.JsonPrimitive)?.content == "MARKER_TYPE_HEATMAP" } }
+                ?.at("markersList.markers").let { it as? kotlinx.serialization.json.JsonArray }.orEmpty().mapNotNull { m ->
+                    val start = m.str("startMillis")?.toLongOrNull() ?: return@mapNotNull null
+                    dev.kestrel.app.player.HeatPoint(start, m.str("intensityScoreNormalized")?.toFloatOrNull() ?: 0f)
+                },
         )
     }
 
