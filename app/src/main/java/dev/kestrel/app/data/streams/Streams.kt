@@ -81,6 +81,17 @@ class LinksRefusedException(msg: String) : java.io.IOException(msg)
 fun Throwable.isLinksRefused() = generateSequence(this) { it.cause }.any { it is LinksRefusedException }
 
 /** YouTube's bot check ("confirm you're not a bot"): like a refusal, it is about this network, not the video. */
+/** The video itself can't be played (private, paid, region, removed...): no other source will help. */
+fun Throwable.isUnplayable(signedIn: Boolean): Boolean = generateSequence(this) { it.cause }.any {
+    it is org.schabi.newpipe.extractor.exceptions.PrivateContentException ||
+        it is org.schabi.newpipe.extractor.exceptions.PaidContentException ||
+        it is org.schabi.newpipe.extractor.exceptions.GeographicRestrictionException ||
+        (it is org.schabi.newpipe.extractor.exceptions.AgeRestrictedContentException && !signedIn) ||
+        // Exact class: the bot check is a subclass. "ERROR" is YouTube's status for removed or wrong IDs.
+        (it.javaClass == org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException::class.java &&
+            (it.message?.contains("UNPLAYABLE") == true || it.message?.contains("ERROR") == true))
+}
+
 fun Throwable.isBotCheck() = generateSequence(this) { it.cause }.any {
     it.javaClass.simpleName.contains("NotBot") || it.message?.contains("not a bot") == true
 }
@@ -111,7 +122,10 @@ object Streams {
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            android.util.Log.w("Kestrel", "NewPipe failed for $videoId: $e"); npError = e; null
+            android.util.Log.w("Kestrel", "NewPipe failed for $videoId: $e")
+            // Final answer: stop the other source too (the exception ends the hedge).
+            if (e.isUnplayable(signedIn)) throw e
+            npError = e; null
         }
         suspend fun fallback(): Resolved? = try {
             Fallback.resolve(videoId)

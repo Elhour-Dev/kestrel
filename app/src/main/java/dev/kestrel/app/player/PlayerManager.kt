@@ -1,5 +1,7 @@
 package dev.kestrel.app.player
 
+import dev.kestrel.app.data.streams.isUnplayable
+
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -521,16 +523,7 @@ object PlayerManager {
     }
 
     /** Videos YouTube's own player can't play either: show the reason instead of trying the web player. */
-    private fun unplayable(e: Throwable): Boolean {
-        val chain = generateSequence(e) { it.cause }.toList()
-        return chain.any {
-            it is org.schabi.newpipe.extractor.exceptions.PrivateContentException ||
-                it is org.schabi.newpipe.extractor.exceptions.PaidContentException ||
-                it is org.schabi.newpipe.extractor.exceptions.GeographicRestrictionException ||
-                (it is org.schabi.newpipe.extractor.exceptions.AgeRestrictedContentException && !Graph.account.isSignedIn) ||
-                (it.javaClass == org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException::class.java && it.message?.contains("UNPLAYABLE") == true)
-        }
-    }
+    private fun unplayable(e: Throwable): Boolean = e.isUnplayable(Graph.account.isSignedIn)
 
     /** Gives up after 40 s even if the network call is stuck in blocking code (a plain timeout can't interrupt that). */
     private suspend fun <T> withNetTimeout(block: suspend () -> T): T {
