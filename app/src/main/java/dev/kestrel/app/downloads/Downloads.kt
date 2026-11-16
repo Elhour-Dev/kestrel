@@ -342,7 +342,7 @@ class Downloads(private val context: Context) {
             val values = ContentValues().apply {
                 put(MediaStore.Downloads.DISPLAY_NAME, name)
                 put(MediaStore.Downloads.MIME_TYPE, mime)
-                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Kestrel")
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/Plover")
                 put(MediaStore.Downloads.IS_PENDING, 1)
             }
             val resolver = context.contentResolver

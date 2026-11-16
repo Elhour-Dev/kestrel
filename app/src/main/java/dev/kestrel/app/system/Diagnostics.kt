@@ -38,7 +38,7 @@ object Diagnostics {
     }
 
     private fun header(ctx: Context, error: String?): String = buildString {
-        appendLine("Kestrel ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+        appendLine("Plover ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         appendLine("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}), ${Build.MANUFACTURER} ${Build.MODEL}")
         appendLine("Network: ${network(ctx)}")
         val s = Graph.settings
@@ -52,7 +52,7 @@ object Diagnostics {
     /** Copies the error, app/device info and the recent app log to the clipboard. */
     suspend fun copyDetails(ctx: Context, error: String?) {
         val text = withContext(Dispatchers.IO) { header(ctx, error) + "\n--- recent log ---\n" + log(300) }
-        ctx.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Kestrel error details", text))
+        ctx.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Plover error details", text))
     }
 
     /** Writes the full app log to a file and opens the share sheet. */

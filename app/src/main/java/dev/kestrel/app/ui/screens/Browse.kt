@@ -138,7 +138,7 @@ fun HomeScreen() {
     }
     var source by remember(signedIn) { mutableStateOf(if (signedIn) "foryou" else kiosks.firstOrNull() ?: "") }
     Column {
-        MainTopBar("Kestrel")
+        MainTopBar("Plover")
         HealthBanner()
         LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (signedIn) item { FilterChip(source == "foryou", { source = "foryou" }, { Text("For you") }) }

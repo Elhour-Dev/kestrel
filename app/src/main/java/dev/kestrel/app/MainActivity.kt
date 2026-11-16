@@ -46,8 +46,7 @@ class MainActivity : ComponentActivity() {
         // a link here is an old one Android replays after the app was stopped.
         if (savedInstanceState == null && !fromRecents && intent.action in setOf(ACTION_OPEN_PLAYER, ACTION_OPEN_DOWNLOADS)) Ui.pendingIntent = intent
         setContent {
-            val theme by Graph.settings.theme.flow.collectAsStateWithLifecycle()
-            KestrelTheme(theme) {
+            KestrelTheme {
                 KestrelRoot(this)
             }
         }

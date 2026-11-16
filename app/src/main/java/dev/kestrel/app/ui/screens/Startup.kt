@@ -66,7 +66,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 fun Logo(size: Int = 96) {
     Box(
         Modifier.size(size.dp).clip(androidx.compose.foundation.shape.CircleShape)
-            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFFE3803F), androidx.compose.ui.graphics.Color(0xFFA8461A)))),
+            .background(androidx.compose.ui.graphics.Brush.linearGradient(listOf(androidx.compose.ui.graphics.Color(0xFF0E4A52), androidx.compose.ui.graphics.Color(0xFF0A2328)))),
     ) {
         Image(painterResource(R.drawable.ic_launcher_foreground), null, Modifier.fillMaxSize())
     }
@@ -112,7 +112,7 @@ fun StartupScreen(onDone: (String) -> Unit) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Logo(112)
             Spacer(Modifier.height(16.dp))
-            Text("Kestrel", fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Text("Plover", fontSize = 30.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(28.dp))
             LinearProgressIndicator(Modifier.width(160.dp))
             Spacer(Modifier.height(12.dp))
@@ -176,7 +176,7 @@ fun OnboardingScreen(onDone: () -> Unit) {
                     0 -> {
                         Logo(120)
                         Spacer(Modifier.height(20.dp))
-                        Text("Welcome to Kestrel", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                        Text("Welcome to Plover", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
                         Spacer(Modifier.height(12.dp))
                         Text("A free, ad-free way to watch videos. No ads, no tracking, sponsor segments skipped for you.", textAlign = TextAlign.Center, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(28.dp))

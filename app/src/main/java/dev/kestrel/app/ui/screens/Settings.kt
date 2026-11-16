@@ -267,9 +267,6 @@ fun SettingsScreen() {
                 }
             }
 
-            item { SectionTitle("Appearance") }
-            item { ChoiceRow("Theme", s.theme, listOf("system" to "System", "light" to "Light", "dark" to "Dark")) }
-
             item { SectionTitle("Playback") }
             item { ChoiceRow("Default quality", s.defaultQuality, listOf(0 to "Best available", 2160 to "2160p", 1440 to "1440p", 1080 to "1080p", 720 to "720p", 480 to "480p", 360 to "360p", 240 to "240p", 144 to "144p")) }
             item { SwitchRow("Background play", "Keep playing when you leave the app or turn the screen off", s.backgroundPlay) }
@@ -295,7 +292,7 @@ fun SettingsScreen() {
             item {
                 ListItem(
                     headlineContent = { Text("Download folder") },
-                    supportingContent = { Text(if (folder.isBlank()) "Downloads/Kestrel" else Uri.parse(folder).lastPathSegment ?: folder) },
+                    supportingContent = { Text(if (folder.isBlank()) "Downloads/Plover" else Uri.parse(folder).lastPathSegment ?: folder) },
                     leadingContent = { Icon(Icons.Default.FolderOpen, null) },
                     trailingContent = { if (folder.isNotBlank()) TextButton(onClick = { s.downloadFolder.value = "" }) { Text("Reset") } },
                     modifier = Modifier.clickable { pickFolder.launch(null) },
@@ -318,8 +315,8 @@ fun SettingsScreen() {
             }
 
             item { SectionTitle("Your data") }
-            item { ListItem(headlineContent = { Text("Restore or import") }, supportingContent = { Text("Kestrel backup, NewPipe subscriptions, or Google Takeout subscriptions.csv") }, modifier = Modifier.clickable { importFile.launch(arrayOf("*/*")) }) }
-            item { ListItem(headlineContent = { Text("Back up") }, supportingContent = { Text("Subscriptions, playlists, history and settings to a file (no login data)") }, modifier = Modifier.clickable { exportFile.launch("kestrel-backup.json") }) }
+            item { ListItem(headlineContent = { Text("Restore or import") }, supportingContent = { Text("Plover or Kestrel backup, NewPipe subscriptions, or Google Takeout subscriptions.csv") }, modifier = Modifier.clickable { importFile.launch(arrayOf("*/*")) }) }
+            item { ListItem(headlineContent = { Text("Back up") }, supportingContent = { Text("Subscriptions, playlists, history and settings to a file (no login data)") }, modifier = Modifier.clickable { exportFile.launch("plover-backup.json") }) }
             item { ListItem(headlineContent = { Text("Share app log") }, supportingContent = { Text("For bug reports. No login data.") }, modifier = Modifier.clickable { scope.launch { runCatching { dev.kestrel.app.system.Diagnostics.shareLog(ctx) }.onFailure { nav.message(friendlyError(it)) } } }) }
             item { ListItem(headlineContent = { Text("Clear watch history") }, modifier = Modifier.clickable { Graph.store.clearHistory(); nav.message("History cleared") }) }
 
@@ -343,7 +340,7 @@ fun SettingsScreen() {
 
             item { SectionTitle("About") }
             item {
-                ListItem(headlineContent = { Text("Kestrel v${BuildConfig.VERSION_NAME}") }, supportingContent = { Text("Check for updates") }, modifier = Modifier.clickable {
+                ListItem(headlineContent = { Text("Plover v${BuildConfig.VERSION_NAME}") }, supportingContent = { Text("Check for updates") }, modifier = Modifier.clickable {
                     scope.launch {
                         try {
                             val r = Updater.check()
@@ -371,17 +368,17 @@ fun SettingsScreen() {
 @Composable
 fun HelpScreen() {
     val faq = listOf(
-        "Why are there no ads?" to "Kestrel plays the video streams directly, so YouTube's ad system never runs.",
+        "Why are there no ads?" to "Plover plays the video streams directly, so YouTube's ad system never runs.",
         "What does SponsorBlock skip?" to "Parts of videos the community marked as sponsors, self-promotion, intros, outros, \"like and subscribe\" reminders and previews. Pick the categories in Settings.",
         "How do I play in the background?" to "Just leave the app or turn off the screen. Use the notification to pause or skip. Turn this off in Settings > Background play.",
         "How do I use the popup player?" to "On a video, tap Popup. The first time, allow \"Display over other apps\". Drag the window to move it, pinch to resize, tap it for controls.",
         "Picture-in-picture" to "Press Home while a video plays, or tap PiP on the video page.",
         "Player gestures" to "Double-tap the left or right side to jump 10 seconds. Swipe up/down on the left for brightness, on the right for volume.",
-        "Where are my downloads?" to "In Library > Downloads (they play offline) and in your phone's Downloads/Kestrel folder, unless you picked another folder.",
-        "Is signing in safe?" to "You sign in on Google's own page. Kestrel keeps the session cookies encrypted on this phone only and never sends them anywhere except YouTube.",
+        "Where are my downloads?" to "In Library > Downloads (they play offline) and in your phone's Downloads/Plover folder, unless you picked another folder.",
+        "Is signing in safe?" to "You sign in on Google's own page. Plover keeps the session cookies encrypted on this phone only and never sends them anywhere except YouTube.",
         "\"Your session expired\"" to "Google ended the login. Tap \"Sign in again\". Your local data is kept.",
-        "Something stopped working" to "YouTube changes often. Kestrel tries to fix itself at startup and checks for a fixed version. See Settings > System status. Updates arrive automatically.",
-        "Import subscriptions" to "Settings > Import accepts a NewPipe export, a Google Takeout subscriptions.csv, or a Kestrel backup.",
+        "Something stopped working" to "YouTube changes often. Plover tries to fix itself at startup and checks for a fixed version. See Settings > System status. Updates arrive automatically.",
+        "Import subscriptions" to "Settings > Import accepts a NewPipe export, a Google Takeout subscriptions.csv, or a Plover (Kestrel) backup.",
     )
     Column(Modifier.fillMaxSize()) {
         BackTopBar("Help")
