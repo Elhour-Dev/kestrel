@@ -87,3 +87,17 @@ Then: commit, push, final report (root cause, techniques, fixes, tests, what's l
   Recents relaunch doesn't replay a link; DoH bootstrap 3-5 s timeout; daily job holds back (no commit, no release) an extractor bump when stream tests were skipped.
 - Known: right after `adb install -r` + force-stop, the first link opened can play the previously opened video (seen 3x; dev-only path).
 - Build 230: confirm dialog before deleting a comment/reply. Phone-tested: post, reply, delete, Cancel keeps it, Delete removes it (all on the user's account, test comments removed).
+
+## Session 2026-11-15/16 (fix list: controls, likes, description, ads, collabs, downloads, subscribe)
+- Watch page details come from YouTube's `next` data right away: likes, description, views/date, avatar, subscribers, related,
+  collaborators (dialog lists every channel; 2nd channel opens). Controls show on start; web player has its own controls and strips/skips ads
+  (ad fields removed from player JSON, ad hosts/paths get 204, skip/mute/jump when an ad shows).
+- Downloads: 1 MB ranges like the player, fresh links once on 403, reuse the playing video's links.
+- Subscribe sends YouTube's params and syncs. Bell removed: YouTube answers 400 for every variant of the notification call.
+- Links open through LinkActivity: first link after a stop/update now opens that video (5/5 cold starts on build 242).
+- Links: preferred source gets 2.5 s, then the other starts too (HedgeTest, 9 offline tests). "Unavailable" from NewPipe ends it at once.
+- Start: links skip the startup wait (checks run 20 s later); normal start waits max 2.5 s (was 6 s). Cold launch 292 ms.
+- New: "Copy error details" on error screens, Settings > Share app log (no cookies), Back up/Restore now include settings (tested on debug app).
+- Network 2026-11-16 ~15:05+: phone VPN slow (1.5 s per TCP connect, links 16-29 s, earlier 4.8 s). Phone v2rayNG uses "vpnizer Auto"
+  (same VPS as the PC); its "Tokyo-Trojan/VLESS" profiles point at an old IP and fail (-1 ms). PC uses Tokyo-Hy2. Not changed (ask user).
+- Account side effects of tests: test videos went into watch history; Kowski and KSI subscriptions from subscribe tests may need removing.
