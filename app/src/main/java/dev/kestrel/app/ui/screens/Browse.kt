@@ -171,7 +171,7 @@ fun HomeScreen(start: String = "home") {
                 // Signed in: the account's own feed. Signed out: a mix of the category pages.
                 val vm = viewModel(key = "home-$signedIn") {
                     itemsVm(
-                        first = { if (signedIn) Graph.innerTube.home() else Page(mixedKiosks(kiosks)) },
+                        first = { if (signedIn) Graph.innerTube.home() else mixedKiosks(kiosks) },
                         more = ::moreAny,
                     )
                 }
@@ -185,19 +185,19 @@ fun HomeScreen(start: String = "home") {
     }
 }
 
-/** First page of each category, interleaved, for the signed-out Home tab. */
-private suspend fun mixedKiosks(kiosks: List<String>): List<Item> = coroutineScope {
-    val pages = kiosks.filter { it != "live" }.map { k -> async { runCatching { NpRepo.kiosk(k).items }.getOrDefault(emptyList()) } }.awaitAll()
+/** First page of each category, interleaved, for the signed-out Home tab. More pages come from the first category. */
+private suspend fun mixedKiosks(kiosks: List<String>): Page<Item> = coroutineScope {
+    val loaded = kiosks.filter { it != "live" }.map { k -> async { runCatching { NpRepo.kiosk(k) }.getOrNull() } }.awaitAll()
+    val pages = loaded.map { it?.items.orEmpty() }
     val out = mutableListOf<Item>()
-    val seen = HashSet<String>()
+    val seen = HashSet<Any>()
     val longest = pages.maxOfOrNull { it.size } ?: 0
     for (i in 0 until longest) pages.forEach { p ->
         val item = p.getOrNull(i) ?: return@forEach
-        val id = (item as? Video)?.id
-        if (id == null || seen.add(id)) out += item
+        if (seen.add(item.key)) out += item
     }
     if (out.isEmpty()) throw java.io.IOException("Couldn't load videos")
-    out
+    Page(out, loaded.firstOrNull()?.next)
 }
 
 /** "More" tab: the other category pages. */

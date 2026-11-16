@@ -61,7 +61,7 @@ fun NotificationsScreen() {
     LaunchedEffect(attempt) {
         error = null
         runCatching { Graph.innerTube.notifications() }
-            .onSuccess { items = it.items; next = it.next; YtNotifications.markRead(it.items) }
+            .onSuccess { items = it.items.distinctBy { n -> n.id }; next = it.next; YtNotifications.markRead(it.items) }
             .onFailure { error = friendlyError(it) }
     }
     val state = rememberLazyListState()
@@ -70,7 +70,7 @@ fun NotificationsScreen() {
         if (loadingMore) return@LoadMoreEffect
         loadingMore = true
         scope.launch {
-            runCatching { Graph.innerTube.notificationsMore(t) }.onSuccess { p -> items = items.orEmpty() + p.items; next = p.next }
+            runCatching { Graph.innerTube.notificationsMore(t) }.onSuccess { p -> val have = items.orEmpty().map { it.id }.toHashSet(); items = items.orEmpty() + p.items.filter { it.id !in have }.distinctBy { it.id }; next = p.next }
             loadingMore = false
         }
     }

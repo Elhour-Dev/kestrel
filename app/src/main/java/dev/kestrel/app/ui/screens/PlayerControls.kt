@@ -159,20 +159,27 @@ fun PlayerControls(np: NowPlaying, activity: MainActivity, fullscreen: Boolean, 
             .pointerInput(np.video.id) {
                 var holdJob: Job? = null
                 var before = 1f
+                var held = false
                 detectTapGestures(
                     onPress = {
+                        held = false
                         holdJob = scope.launch {
                             delay(600)
                             before = PlayerManager.speed.value
+                            held = true
                             holding = true
                             PlayerManager.setSpeed(2f)
                         }
-                        tryAwaitRelease()
-                        holdJob?.cancel()
-                        // Back to the speed the user had chosen.
-                        if (holding) { holding = false; PlayerManager.setSpeed(before) }
+                        try {
+                            tryAwaitRelease()
+                        } finally {
+                            // Also runs when the gesture is cancelled (new video, rotation, PiP).
+                            holdJob?.cancel()
+                            // Back to the speed the user had chosen.
+                            if (held) { holding = false; PlayerManager.setSpeed(before) }
+                        }
                     },
-                    onTap = { visible = !visible; poke() },
+                    onTap = { if (!held) { visible = !visible; poke() } },
                     onDoubleTap = { o ->
                         when {
                             o.x < size.width / 3f -> { PlayerManager.seekTo(PlayerManager.positionMs() - 10_000); seekBubble = -1; bubbleAt = System.currentTimeMillis() }
@@ -240,8 +247,8 @@ fun PlayerControls(np: NowPlaying, activity: MainActivity, fullscreen: Boolean, 
                 Row(Modifier.align(Alignment.Center), horizontalArrangement = Arrangement.spacedBy(28.dp), verticalAlignment = Alignment.CenterVertically) {
                     RoundButton(Icons.Default.SkipPrevious, "Previous", 48, enabled = true) { PlayerManager.previous(); poke() }
                     Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
-                        if (buffering) CircularProgressIndicator(Modifier.size(48.dp), color = Color.White, strokeWidth = 3.dp)
-                        else RoundButton(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause" else "Play", 64, enabled = true) {
+                        if (buffering) CircularProgressIndicator(Modifier.size(64.dp), color = Color.White, strokeWidth = 3.dp)
+                        RoundButton(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, if (playing) "Pause" else "Play", 64, enabled = true) {
                             PlayerManager.toggle(); poke()
                         }
                     }

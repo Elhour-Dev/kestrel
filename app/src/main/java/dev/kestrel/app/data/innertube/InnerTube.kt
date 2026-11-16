@@ -100,7 +100,8 @@ class InnerTube(private val account: AccountStore) {
     }
 
     /** Raw InnerTube POST. [auth] = send the Google session. */
-    suspend fun post(endpoint: String, body: JsonObject, auth: Boolean = true): JsonObject =
+    /** [expireOnDenied] false: a 401/403 is a plain error (for side calls like the bell), not "signed out". */
+    suspend fun post(endpoint: String, body: JsonObject, auth: Boolean = true, expireOnDenied: Boolean = true): JsonObject =
         withContext(Dispatchers.IO) {
             val session = account.session.value
             if (auth && session == null) throw NotSignedInException()
@@ -123,7 +124,7 @@ class InnerTube(private val account: AccountStore) {
             Http.client.newCall(rb.build()).execute().use { resp ->
                 if (auth) account.mergeCookies(resp.headers("Set-Cookie"))
                 val text = resp.body.string()
-                if (auth && (resp.code == 401 || resp.code == 403)) {
+                if (auth && expireOnDenied && (resp.code == 401 || resp.code == 403)) {
                     account.markExpired(); throw SessionExpiredException()
                 }
                 if (!resp.isSuccessful) {
@@ -250,17 +251,17 @@ class InnerTube(private val account: AccountStore) {
     /** The bell's inbox, newest first. */
     suspend fun notifications(): NoticePage {
         // The inbox page of the mobile site has the entries; the desktop bell menu came back empty (Nov 2026).
-        val page = parseNotices(post("browse", buildJsonObject { put("browseId", "FEnotifications_inbox") }))
+        val page = parseNotices(post("browse", buildJsonObject { put("browseId", "FEnotifications_inbox") }, expireOnDenied = false))
         if (page.items.isNotEmpty()) return page
         return parseNotices(post("notification/get_notification_menu", buildJsonObject { put("notificationsMenuRequestType", "NOTIFICATIONS_MENU_REQUEST_TYPE_INBOX") }))
     }
 
     suspend fun notificationsMore(token: String): NoticePage =
-        parseNotices(post("browse", buildJsonObject { put("continuation", token) }))
+        parseNotices(post("browse", buildJsonObject { put("continuation", token) }, expireOnDenied = false))
 
     /** Number shown on the bell. */
     suspend fun unseenNotifications(): Int {
-        val r = post("notification/get_unseen_count", buildJsonObject {})
+        val r = post("notification/get_unseen_count", buildJsonObject {}, expireOnDenied = false)
         return r.findFirstStr("unseenCount")?.toIntOrNull()
             ?: r.findAll("updateNotificationsUnseenCountAction").firstOrNull()?.str("unseenCount")?.toIntOrNull()
             ?: 0

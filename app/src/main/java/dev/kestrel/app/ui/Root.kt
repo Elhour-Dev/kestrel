@@ -157,7 +157,7 @@ fun KestrelRoot(activity: MainActivity) {
                     composable("playlists") { PlaylistsScreen() }
                     composable("notifications") { NotificationsScreen() }
                 }
-                if (showMini && !fullscreenPlayer) MiniPlayer(Modifier.align(Alignment.BottomEnd).padding(12.dp)) { nav.navigate("player") { launchSingleTop = true } }
+                if (showMini && !fullscreenPlayer && !dev.kestrel.app.player.PopupService.isShowing) MiniPlayer(Modifier.align(Alignment.BottomEnd).padding(12.dp)) { nav.navigate("player") { launchSingleTop = true } }
                 }
             }
         }

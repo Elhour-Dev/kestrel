@@ -292,7 +292,8 @@ fun SettingsScreen() {
                     item { SwitchRow("Send plays to watch history", "Videos you watch appear in your YouTube history", s.sendHistory) }
                     item {
                         SwitchRow("YouTube notifications", "Show your account's notifications (new uploads, replies) on this phone", s.ytNotifications)
-                        androidx.compose.runtime.LaunchedEffect(s.ytNotifications.value) { dev.kestrel.app.system.YtNotifications.schedule(Graph.app) }
+                        val on by s.ytNotifications.flow.collectAsStateWithLifecycle()
+                        androidx.compose.runtime.LaunchedEffect(on) { dev.kestrel.app.system.YtNotifications.schedule(Graph.app) }
                     }
                     item {
                         ListItem(headlineContent = { Text("Sync subscriptions now") }, modifier = Modifier.clickable {
@@ -414,9 +415,9 @@ fun HelpScreen() {
         "Why are there no ads?" to "Plover plays the video streams directly, so YouTube's ad system never runs.",
         "What does SponsorBlock skip?" to "Parts of videos the community marked as sponsors, self-promotion, intros, outros, \"like and subscribe\" reminders and previews. Pick the categories in Settings.",
         "How do I play in the background?" to "Just leave the app or turn off the screen. Use the notification to pause or skip. Turn this off in Settings > Background play.",
-        "How do I use the popup player?" to "On a video, tap Popup. The first time, allow \"Display over other apps\". Drag the window to move it, pinch to resize, tap it for controls.",
+        "How do I use the popup player?" to "On a video, open the player's settings (gear) and tap Popup. The first time, allow \"Display over other apps\". Drag the window to move it, pinch to resize, tap it for controls.",
         "Picture-in-picture" to "Press Home while a video plays, or tap PiP on the video page.",
-        "Player gestures" to "Double-tap the left or right side to jump 10 seconds. Swipe up/down on the left for brightness, on the right for volume.",
+        "Player gestures" to "Double-tap the left or right side to jump 10 seconds. Hold for 2x speed. Swipe up for fullscreen, down to minimize. In fullscreen, swipe up/down on the left for brightness, on the right for volume.",
         "Where are my downloads?" to "In You > Downloads (they play offline) and in your phone's Downloads/Plover folder (Downloads/Kestrel for older ones), unless you picked another folder.",
         "Is signing in safe?" to "You sign in on Google's own page. Plover keeps the session cookies encrypted on this phone only and never sends them anywhere except YouTube.",
         "\"Your session expired\"" to "Google ended the login. Tap \"Sign in again\". Your local data is kept.",

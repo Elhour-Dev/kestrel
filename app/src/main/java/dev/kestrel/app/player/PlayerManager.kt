@@ -151,7 +151,7 @@ object PlayerManager {
 
     private val web get() = _now.value?.web == true
     fun isPlaying() = if (web) WebHost.playing else player.isPlaying
-    fun isPlayingOrWill() = if (web) WebHost.playing else player.isPlaying || player.playWhenReady
+    fun isPlayingOrWill() = if (web) WebHost.playing else player.isPlaying || (player.playWhenReady && player.playbackState != Player.STATE_ENDED)
     fun positionMs() = if (web) WebHost.positionMs else player.currentPosition
     fun durationMs() = if (web) WebHost.durationMs else player.duration
     fun pause() = if (web) WebHost.pause() else player.pause()
@@ -159,8 +159,11 @@ object PlayerManager {
     fun isBuffering() = !web && player.playbackState == Player.STATE_BUFFERING
     fun toggle() {
         when {
-            isPlaying() -> pause()
-            web -> WebHost.resume()
+            web -> if (WebHost.playing) WebHost.pause() else WebHost.resume()
+            // Ended: start again, like YouTube's replay button.
+            player.playbackState == Player.STATE_ENDED -> { player.seekTo(0); player.play() }
+            // Also pauses while buffering (playing is false then, but it will play).
+            player.playWhenReady -> player.pause()
             else -> player.play()
         }
     }
