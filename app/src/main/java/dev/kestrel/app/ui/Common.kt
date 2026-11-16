@@ -246,7 +246,23 @@ fun ErrorState(text: String, modifier: Modifier = Modifier, onRetry: () -> Unit)
         Text(text, textAlign = TextAlign.Center)
         Spacer(Modifier.height(16.dp))
         Button(onClick = onRetry) { Text("Try again") }
+        CopyDetailsButton(text)
     }
+}
+
+/** Copies the error with app/device info and the recent app log, for bug reports. */
+@Composable
+fun CopyDetailsButton(error: String, color: androidx.compose.ui.graphics.Color = androidx.compose.ui.graphics.Color.Unspecified) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val nav = LocalNav.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    androidx.compose.material3.TextButton(onClick = {
+        scope.launch {
+            dev.kestrel.app.system.Diagnostics.copyDetails(ctx, error)
+            // Android 13+ shows its own "Copied" note.
+            if (android.os.Build.VERSION.SDK_INT < 33) nav.message("Error details copied")
+        }
+    }) { Text("Copy error details", color = if (color == androidx.compose.ui.graphics.Color.Unspecified) MaterialTheme.colorScheme.primary else color) }
 }
 
 // ---------------- item views ----------------

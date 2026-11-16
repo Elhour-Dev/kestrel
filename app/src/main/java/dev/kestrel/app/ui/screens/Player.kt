@@ -199,6 +199,7 @@ private fun VideoSurface(np: NowPlaying, activity: MainActivity, modifier: Modif
                 Text(err, color = Color.White, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(8.dp))
                 Button(onClick = { PlayerManager.retry() }) { Icon(Icons.Default.Refresh, null); Text(" Retry") }
+                dev.kestrel.app.ui.CopyDetailsButton(err, Color.White)
             }
         }
     }
