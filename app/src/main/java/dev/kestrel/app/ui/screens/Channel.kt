@@ -141,7 +141,7 @@ fun ChannelScreen(id: String) {
                             }
                             SubscribeButton(d.channel, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
                             if (tabs.size > 1) PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
-                                tabs.forEachIndexed { i, (_, label) -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
+                                tabs.forEachIndexed { i, (_, label) -> Tab(tab == i, { tab = i }, text = { Text(label) }, unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant) }
                             }
                         }
                     }
@@ -150,7 +150,9 @@ fun ChannelScreen(id: String) {
                     LazyColumn { header() ; item { EmptyState("This channel has no videos.", Modifier.height(300.dp)) } }
                 } else {
                     val handler = d.tabs[tabs[tab.coerceIn(tabs.indices)].first]!!
-                    val vm = viewModel(key = "ch-$id-$tab") { itemsVm({ NpRepo.channelTab(handler) }, ::moreAny) }
+                    // Channel pages don't carry the channel picture per video: add it for the cards.
+                    val withAvatar: (Page<Item>) -> Page<Item> = { p -> Page(p.items.map { (it as? Video)?.let { v -> v.copy(channelAvatar = v.channelAvatar ?: d.channel.avatar) } ?: it }, p.next) }
+                    val vm = viewModel(key = "ch-$id-$tab") { itemsVm({ withAvatar(NpRepo.channelTab(handler)) }, { t -> withAvatar(moreAny(t)) }) }
                     val kind = tabs[tab.coerceIn(tabs.indices)].first
                     PagedItemList(vm, "Nothing here.", compact = kind == ChannelTabs.SHORTS || kind == ChannelTabs.PLAYLISTS, header = header)
                 }

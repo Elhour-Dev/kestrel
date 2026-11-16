@@ -19,6 +19,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.WatchLater
+import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material.icons.automirrored.outlined.PlaylistPlay
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Subscriptions
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Download
@@ -271,46 +280,80 @@ fun LibraryScreen() {
     val nav = LocalNav.current
     val lib by Graph.store.library.collectAsStateWithLifecycle()
     val accountState by Graph.account.state.collectAsStateWithLifecycle()
+    val session by Graph.account.session.collectAsStateWithLifecycle()
     val signedIn = accountState == AccountState.SignedIn
     val downloads by Graph.downloads.items.collectAsStateWithLifecycle()
     Column {
-        dev.kestrel.app.ui.BrandBar {
+        Row(Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Spacer(Modifier.weight(1f))
             dev.kestrel.app.ui.BarIcon(Icons.Default.Search, "Search") { nav.go("search") }
             dev.kestrel.app.ui.BarIcon(Icons.Default.Settings, "Settings") { nav.go("settings") }
         }
-        LazyColumn(Modifier.fillMaxSize()) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 16.dp)) {
+            item {
+                val s = session
+                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Avatar(s?.avatar?.ifBlank { null }, 72)
+                    Column(Modifier.weight(1f).padding(start = 16.dp)) {
+                        if (s != null && signedIn) {
+                            Text(s.name.ifBlank { "Your account" }, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            if (s.handle.isNotBlank()) Text(s.handle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            Text("You", style = MaterialTheme.typography.headlineSmall)
+                            Text("Sign in to see your subscriptions, playlists and likes", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+                if (!signedIn) androidx.compose.material3.Button(onClick = { nav.go("login") }, Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) { Text("Sign in with Google") }
+            }
             if (lib.history.isNotEmpty()) {
-                item { SectionTitle("Recently watched") }
+                item { SectionLink("History") { nav.go("feed/history") } }
                 item {
                     LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(lib.history.take(20), key = { it.video.id }) { h ->
-                            Column(Modifier.width(160.dp).clickable { nav.openVideo(h.video) }) {
+                            Column(Modifier.width(168.dp).clickable { nav.openVideo(h.video) }) {
                                 Thumb(h.video, Modifier.fillMaxWidth(), progress = Graph.store.position(h.video.id).let { p -> if (h.video.durationSec > 0) p / (h.video.durationSec * 1000f) else 0f })
-                                Text(h.video.title, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 4.dp))
+                                Text(h.video.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 6.dp))
+                                Text(h.video.channelName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                         }
                     }
                 }
             }
-            item { Spacer(Modifier.height(8.dp)) }
-            item { LibRow(Icons.Default.History, "History", "${lib.history.size} on this phone" + if (signedIn) " • account history" else "") { nav.go("feed/history") } }
+            item { SectionLink("Library", null) }
+            item { LibRow(Icons.Outlined.History, "History", "${lib.history.size} on this phone" + if (signedIn) " · account history" else "") { nav.go("feed/history") } }
             if (signedIn) {
-                item { LibRow(Icons.Default.WatchLater, "Watch later", "From your Google account") { nav.go("feed/watchlater") } }
-                item { LibRow(Icons.Default.ThumbUp, "Liked videos", "From your Google account") { nav.go("feed/liked") } }
+                item { LibRow(Icons.Outlined.WatchLater, "Watch later", null) { nav.go("feed/watchlater") } }
+                item { LibRow(Icons.Outlined.ThumbUp, "Liked videos", null) { nav.go("feed/liked") } }
             }
-            item { LibRow(Icons.AutoMirrored.Filled.PlaylistPlay, "Playlists", "${lib.playlists.size} on this phone" + if (signedIn) " • account playlists" else "") { nav.go("playlists") } }
-            item { LibRow(Icons.Default.Download, "Downloads", "${downloads.count { it.status.name == "Done" }} saved for offline") { nav.go("downloads") } }
-            item { LibRow(Icons.Default.Person, "Channels", "${lib.subscriptions.size} subscriptions") { nav.go("subchannels") } }
+            item { LibRow(Icons.AutoMirrored.Outlined.PlaylistPlay, "Playlists", "${lib.playlists.size} on this phone" + if (signedIn) " · account playlists" else "") { nav.go("playlists") } }
+            item { LibRow(Icons.Outlined.Download, "Downloads", "${downloads.count { it.status.name == "Done" }} saved for offline") { nav.go("downloads") } }
+            item { LibRow(Icons.Outlined.Subscriptions, "Your channels", "${lib.subscriptions.size} subscriptions") { nav.go("subchannels") } }
+            item { androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant) }
+            item { LibRow(Icons.Outlined.Settings, "Settings", null) { nav.go("settings") } }
+            item { LibRow(Icons.AutoMirrored.Outlined.HelpOutline, "Help", null) { nav.go("help") } }
         }
     }
 }
 
+/** Section title, with an arrow when it opens a page. */
 @Composable
-private fun LibRow(icon: ImageVector, title: String, sub: String, onClick: () -> Unit) {
+private fun SectionLink(title: String, onClick: (() -> Unit)?) {
+    Row(
+        Modifier.fillMaxWidth().then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier).padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, style = MaterialTheme.typography.titleLarge)
+        if (onClick != null) Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, Modifier.padding(start = 4.dp))
+    }
+}
+
+@Composable
+private fun LibRow(icon: ImageVector, title: String, sub: String?, onClick: () -> Unit) {
     ListItem(
-        headlineContent = { Text(title) },
-        supportingContent = { Text(sub) },
-        leadingContent = { Icon(icon, null, Modifier.size(28.dp), tint = MaterialTheme.colorScheme.primary) },
+        headlineContent = { Text(title, style = MaterialTheme.typography.titleMedium) },
+        supportingContent = sub?.let { { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
+        leadingContent = { Icon(icon, null, Modifier.size(26.dp)) },
         modifier = Modifier.clickable(onClick = onClick),
     )
 }
