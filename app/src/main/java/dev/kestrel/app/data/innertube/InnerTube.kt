@@ -84,7 +84,8 @@ class InnerTube(private val account: AccountStore) {
         return "SAPISIDHASH ${ts}_$hash"
     }
 
-    private fun context(): JsonObject = buildJsonObject {
+    /** [auth] false: no account fields (YouTube answers 401 to "on behalf of" without the cookies). */
+    private fun context(auth: Boolean = true): JsonObject = buildJsonObject {
         putJsonObject("client") {
             put("clientName", "WEB")
             put("clientVersion", clientVersion)
@@ -93,7 +94,7 @@ class InnerTube(private val account: AccountStore) {
             (account.session.value?.visitorData?.takeIf { it.isNotBlank() } ?: visitorData)?.let { put("visitorData", it) }
         }
         val ds = account.session.value?.dataSyncId.orEmpty()
-        if (ds.contains("||")) {
+        if (auth && ds.contains("||")) {
             putJsonObject("user") { put("onBehalfOfUser", ds.substringBefore("||")) }
         }
     }
@@ -103,7 +104,7 @@ class InnerTube(private val account: AccountStore) {
         withContext(Dispatchers.IO) {
             val session = account.session.value
             if (auth && session == null) throw NotSignedInException()
-            val full = JsonObject(body + ("context" to context()))
+            val full = JsonObject(body + ("context" to context(auth)))
             val rb = Request.Builder()
                 .url("$BASE/youtubei/v1/$endpoint?prettyPrint=false")
                 .post(full.toString().toRequestBody(JSON_TYPE))
@@ -154,9 +155,9 @@ class InnerTube(private val account: AccountStore) {
         return Page(Parser.items(r), Parser.continuation(r))
     }
 
-    /** Backup search (no login needed), used when NewPipe search breaks. */
-    suspend fun search(query: String): Page<Item> {
-        val r = post("search", buildJsonObject { put("query", query) }, auth = false)
+    /** Backup search (no login needed), used when NewPipe search breaks; [params] = YouTube's filter code (date, length, sort). */
+    suspend fun search(query: String, params: String? = null): Page<Item> {
+        val r = post("search", buildJsonObject { put("query", query); params?.let { put("params", it) } }, auth = false)
         return Page(Parser.items(r), Parser.continuation(r))
     }
 

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.NorthWest
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.FilterChip
@@ -56,7 +57,15 @@ import kotlinx.coroutines.delay
 
 private val filters = listOf(null to "All", "videos" to "Videos", "channels" to "Channels", "playlists" to "Playlists")
 
-suspend fun searchAny(query: String, filter: String?): Page<Item> {
+/** YouTube's own search filter codes (protobuf, base64): upload date, length and sort order. */
+private val extraFilters = listOf(
+    "EgIIAg%3D%3D" to "Today", "EgIIAw%3D%3D" to "This week", "EgIIBA%3D%3D" to "This month", "EgIIBQ%3D%3D" to "This year",
+    "EgIYAQ%3D%3D" to "Under 4 minutes", "EgIYAw%3D%3D" to "4-20 minutes", "EgIYAg%3D%3D" to "Over 20 minutes",
+    "CAI%3D" to "Newest first", "CAM%3D" to "Most viewed", "EgJAAQ%3D%3D" to "Live",
+).map { (code, label) -> java.net.URLDecoder.decode(code, "UTF-8") to label }
+
+suspend fun searchAny(query: String, filter: String?, extra: String? = null): Page<Item> {
+    if (extra != null) return Graph.innerTube.search(query, extra)
     if (!Health.searchFallback) {
         try {
             return NpRepo.search(query, filter)
@@ -79,6 +88,14 @@ fun SearchScreen() {
     var text by rememberSaveable { mutableStateOf("") }
     var submitted by rememberSaveable { mutableStateOf<String?>(null) }
     var filter by rememberSaveable { mutableStateOf<String?>(null) }
+    var extra by rememberSaveable { mutableStateOf<String?>(null) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val voiceIntent = remember {
+        android.content.Intent(android.speech.RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_LANGUAGE_MODEL, android.speech.RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(android.speech.RecognizerIntent.EXTRA_PROMPT, "Search")
+    }
+    val canVoice = remember { voiceIntent.resolveActivity(ctx.packageManager) != null }
     var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
     val lib by Graph.store.library.collectAsStateWithLifecycle()
     val focus = remember { FocusRequester() }
@@ -104,6 +121,9 @@ fun SearchScreen() {
         suggestions = runCatching { NpRepo.suggestions(text) }.getOrDefault(emptyList()).take(10)
     }
     LaunchedEffect(Unit) { if (submitted == null) focus.requestFocus() }
+    val voice = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) { res ->
+        res.data?.getStringArrayListExtra(android.speech.RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()?.let { submit(it) }
+    }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(top = 8.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -116,7 +136,10 @@ fun SearchScreen() {
                 modifier = Modifier.weight(1f).focusRequester(focus),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { submit(text) }),
-                trailingIcon = { if (text.isNotEmpty()) IconButton(onClick = { text = ""; submitted = null; focus.requestFocus() }) { Icon(Icons.Default.Close, "Clear") } },
+                trailingIcon = {
+                    if (text.isNotEmpty()) IconButton(onClick = { text = ""; submitted = null; focus.requestFocus() }) { Icon(Icons.Default.Close, "Clear") }
+                    else if (canVoice) IconButton(onClick = { runCatching { voice.launch(voiceIntent) } }) { Icon(Icons.Default.Mic, "Voice search") }
+                },
                 colors = TextFieldDefaults.colors(focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
                 shape = MaterialTheme.shapes.extraLarge,
             )
@@ -144,10 +167,11 @@ fun SearchScreen() {
             }
         } else {
             LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(filters) { (f, label) -> FilterChip(filter == f, { filter = f }, { Text(label) }) }
+                items(filters) { (f, label) -> FilterChip(filter == f && extra == null, { filter = f; extra = null }, { Text(label) }) }
+                items(extraFilters) { (code, label) -> FilterChip(extra == code, { extra = if (extra == code) null else code }, { Text(label) }) }
             }
-            val vm = viewModel(key = "search-$q-$filter") { itemsVm({ searchAny(q, filter) }, ::searchMoreAny) }
-            PagedItemList(vm, "No results for \"$q\".", compact = true)
+            val vm = viewModel(key = "search-$q-$filter-$extra") { itemsVm({ searchAny(q, filter, extra) }, ::searchMoreAny) }
+            PagedItemList(vm, "No results for \"$q\".", compact = false)
         }
     }
 }
