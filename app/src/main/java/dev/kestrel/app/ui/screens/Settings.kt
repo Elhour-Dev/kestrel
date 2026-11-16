@@ -1,5 +1,16 @@
 package dev.kestrel.app.ui.screens
 
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.FastForward
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.VideoLibrary
+import androidx.compose.material.icons.outlined.Storage
+import androidx.compose.material.icons.outlined.MonitorHeart
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -196,8 +207,10 @@ private val regions: List<Pair<String, String>> by lazy {
 }
 
 @UnstableApi
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen() {
+    var section by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     val nav = LocalNav.current
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -237,124 +250,150 @@ fun SettingsScreen() {
     }
 
     Column(Modifier.fillMaxSize()) {
-        BackTopBar("Settings")
+        // Like the YouTube app: a list of categories, each one its own page.
+        androidx.activity.compose.BackHandler(enabled = section != null) { section = null }
+        val nav2 = LocalNav.current
+        androidx.compose.material3.TopAppBar(
+            title = { Text(section ?: "Settings") },
+            navigationIcon = { androidx.compose.material3.IconButton(onClick = { if (section != null) section = null else nav2.back() }) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
+            windowInsets = androidx.compose.foundation.layout.WindowInsets(0),
+        )
         LazyColumn {
-            item { SectionTitle("Account") }
-            item {
-                val sess = session
-                if (sess == null) {
+            if (section == null) {
+                items(listOf("Account" to Icons.Outlined.AccountCircle, "Playback" to Icons.Outlined.PlayCircle, "SponsorBlock" to Icons.Outlined.FastForward, "Downloads" to Icons.Outlined.Download, "Network" to Icons.Outlined.Language, "Content" to Icons.Outlined.VideoLibrary, "Your data" to Icons.Outlined.Storage, "System status" to Icons.Outlined.MonitorHeart, "About" to Icons.Outlined.Info)) { (name, icon) ->
                     ListItem(
-                        headlineContent = { Text("Sign in with Google") },
-                        supportingContent = { Text("Your feed, subscriptions, history, playlists, likes and comments") },
-                        modifier = Modifier.clickable { nav.go("login") },
-                    )
-                } else {
-                    ListItem(
-                        headlineContent = { Text(sess.name.ifBlank { "Google account" }) },
-                        supportingContent = { Text(if (accountState == AccountState.Expired) "Session expired — tap to sign in again" else sess.handle.ifBlank { "Signed in" }) },
-                        leadingContent = { Avatar(sess.avatar, 40) },
-                        trailingContent = { TextButton(onClick = { confirmSignOut = true }) { Text("Sign out") } },
-                        modifier = Modifier.clickable { if (accountState == AccountState.Expired) nav.go("login") },
+                        headlineContent = { Text(name, style = MaterialTheme.typography.titleMedium) },
+                        leadingContent = { Icon(icon, null) },
+                        modifier = Modifier.clickable { section = name },
                     )
                 }
             }
-            if (session != null) {
-                item { SwitchRow("Send plays to watch history", "Videos you watch appear in your YouTube history", s.sendHistory) }
+            if (section == "Account") {
                 item {
-                    ListItem(headlineContent = { Text("Sync subscriptions now") }, modifier = Modifier.clickable {
-                        scope.launchCatching(nav, "Subscriptions synced") { Graph.store.mergeSubscriptions(Graph.innerTube.subscribedChannels()) }
+                    val sess = session
+                    if (sess == null) {
+                        ListItem(
+                            headlineContent = { Text("Sign in with Google") },
+                            supportingContent = { Text("Your feed, subscriptions, history, playlists, likes and comments") },
+                            modifier = Modifier.clickable { nav.go("login") },
+                        )
+                    } else {
+                        ListItem(
+                            headlineContent = { Text(sess.name.ifBlank { "Google account" }) },
+                            supportingContent = { Text(if (accountState == AccountState.Expired) "Session expired — tap to sign in again" else sess.handle.ifBlank { "Signed in" }) },
+                            leadingContent = { Avatar(sess.avatar, 40) },
+                            trailingContent = { TextButton(onClick = { confirmSignOut = true }) { Text("Sign out") } },
+                            modifier = Modifier.clickable { if (accountState == AccountState.Expired) nav.go("login") },
+                        )
+                    }
+                }
+                if (session != null) {
+                    item { SwitchRow("Send plays to watch history", "Videos you watch appear in your YouTube history", s.sendHistory) }
+                    item {
+                        ListItem(headlineContent = { Text("Sync subscriptions now") }, modifier = Modifier.clickable {
+                            scope.launchCatching(nav, "Subscriptions synced") { Graph.store.mergeSubscriptions(Graph.innerTube.subscribedChannels()) }
+                        })
+                    }
+                }
+
+            }
+            if (section == "Playback") {
+                item { ChoiceRow("Default quality", s.defaultQuality, listOf(0 to "Best available", 2160 to "2160p", 1440 to "1440p", 1080 to "1080p", 720 to "720p", 480 to "480p", 360 to "360p", 240 to "240p", 144 to "144p")) }
+                item { SwitchRow("Background play", "Keep playing when you leave the app or turn the screen off", s.backgroundPlay) }
+                item { SwitchRow("Picture-in-picture", "Shrink the video to a small window when you leave the app", s.autoPip) }
+                item { SwitchRow("Resume where you left off", null, s.resumePlayback) }
+
+            }
+            if (section == "SponsorBlock") {
+                item { SwitchRow("Skip segments automatically", "Community-submitted segments from sponsor.ajay.app", s.sponsorBlockEnabled) }
+                item { SwitchRow("Show a message when skipping", null, s.sponsorBlockToast) }
+                items(SponsorCategories.all.entries.toList()) { (key, label) ->
+                    ListItem(
+                        headlineContent = { Text(label) },
+                        trailingContent = {
+                            Switch(key in sbCats, enabled = sbOn, onCheckedChange = { on ->
+                                s.sponsorBlockCategories.value = if (on) sbCats + key else sbCats - key
+                            })
+                        },
+                        modifier = Modifier.padding(start = 16.dp),
+                    )
+                }
+
+            }
+            if (section == "Downloads") {
+                item {
+                    ListItem(
+                        headlineContent = { Text("Download folder") },
+                        supportingContent = { Text(if (folder.isBlank()) "Downloads/Plover" else Uri.parse(folder).lastPathSegment ?: folder) },
+                        leadingContent = { Icon(Icons.Default.FolderOpen, null) },
+                        trailingContent = { if (folder.isNotBlank()) TextButton(onClick = { s.downloadFolder.value = "" }) { Text("Reset") } },
+                        modifier = Modifier.clickable { pickFolder.launch(null) },
+                    )
+                }
+                item { ChoiceRow("Downloads at the same time", s.maxParallelDownloads, (1..5).map { it to it.toString() }) }
+
+            }
+            if (section == "Network") {
+                item { ProxyRow(s.proxy) }
+                item { SwitchRow("DNS over HTTPS", "Look up addresses through Cloudflare instead of the network's DNS. Applies after restart.", s.dnsOverHttps) }
+
+            }
+            if (section == "Content") {
+                item {
+                    val region by s.region.flow.collectAsStateWithLifecycle()
+                    ChoiceRow("Content region", s.region, regions)
+                    androidx.compose.runtime.LaunchedEffect(region) {
+                        NpRepo.setRegion(region, s.language.value)
+                        Graph.innerTube.gl = region
+                    }
+                }
+
+            }
+            if (section == "Your data") {
+                item { ListItem(headlineContent = { Text("Restore or import") }, supportingContent = { Text("Plover or Kestrel backup, NewPipe subscriptions, or Google Takeout subscriptions.csv") }, modifier = Modifier.clickable { importFile.launch(arrayOf("*/*")) }) }
+                item { ListItem(headlineContent = { Text("Back up") }, supportingContent = { Text("Subscriptions, playlists, history and settings to a file (no login data)") }, modifier = Modifier.clickable { exportFile.launch("plover-backup.json") }) }
+                item { ListItem(headlineContent = { Text("Share app log") }, supportingContent = { Text("For bug reports. No login data.") }, modifier = Modifier.clickable { scope.launch { runCatching { dev.kestrel.app.system.Diagnostics.shareLog(ctx) }.onFailure { nav.message(friendlyError(it)) } } }) }
+                item { ListItem(headlineContent = { Text("Clear watch history") }, modifier = Modifier.clickable { Graph.store.clearHistory(); nav.message("History cleared") }) }
+
+            }
+            if (section == "System status") {
+                item {
+                    Column(Modifier.padding(horizontal = 16.dp)) {
+                        if (health.isEmpty()) Text("Not checked yet.", style = MaterialTheme.typography.bodySmall)
+                        health.values.forEach {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
+                                Icon(if (it.ok) Icons.Default.CheckCircle else Icons.Default.Error, null,
+                                    tint = if (it.ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                                Text("  ${it.feature.label}: ${it.message}", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                        OutlinedButton(enabled = !checking, onClick = {
+                            checking = true
+                            scope.launch { runCatching { Health.runAll {} }; checking = false }
+                        }) { Text(if (checking) "Checking…" else "Run check again") }
+                    }
+                }
+
+            }
+            if (section == "About") {
+                item {
+                    ListItem(headlineContent = { Text("Plover v${BuildConfig.VERSION_NAME}") }, supportingContent = { Text("Check for updates") }, modifier = Modifier.clickable {
+                        scope.launch {
+                            try {
+                                val r = Updater.check()
+                                if (r == null) nav.message("You're on the latest version")
+                                else {
+                                    nav.message("Downloading ${r.name}…")
+                                    Updater.install(ctx, Updater.download(ctx, r) {})
+                                }
+                            } catch (e: Exception) { nav.message(friendlyError(e)) }
+                        }
                     })
                 }
+                item { ListItem(headlineContent = { Text("Help") }, modifier = Modifier.clickable { nav.go("help") }) }
+                item { ListItem(headlineContent = { Text("License") }, supportingContent = { Text("GNU GPL v3. Uses NewPipeExtractor (GPLv3), Media3, SponsorBlock API.") }) }
             }
-
-            item { SectionTitle("Playback") }
-            item { ChoiceRow("Default quality", s.defaultQuality, listOf(0 to "Best available", 2160 to "2160p", 1440 to "1440p", 1080 to "1080p", 720 to "720p", 480 to "480p", 360 to "360p", 240 to "240p", 144 to "144p")) }
-            item { SwitchRow("Background play", "Keep playing when you leave the app or turn the screen off", s.backgroundPlay) }
-            item { SwitchRow("Picture-in-picture", "Shrink the video to a small window when you leave the app", s.autoPip) }
-            item { SwitchRow("Resume where you left off", null, s.resumePlayback) }
-
-            item { SectionTitle("SponsorBlock") }
-            item { SwitchRow("Skip segments automatically", "Community-submitted segments from sponsor.ajay.app", s.sponsorBlockEnabled) }
-            item { SwitchRow("Show a message when skipping", null, s.sponsorBlockToast) }
-            items(SponsorCategories.all.entries.toList()) { (key, label) ->
-                ListItem(
-                    headlineContent = { Text(label) },
-                    trailingContent = {
-                        Switch(key in sbCats, enabled = sbOn, onCheckedChange = { on ->
-                            s.sponsorBlockCategories.value = if (on) sbCats + key else sbCats - key
-                        })
-                    },
-                    modifier = Modifier.padding(start = 16.dp),
-                )
-            }
-
-            item { SectionTitle("Downloads") }
-            item {
-                ListItem(
-                    headlineContent = { Text("Download folder") },
-                    supportingContent = { Text(if (folder.isBlank()) "Downloads/Plover" else Uri.parse(folder).lastPathSegment ?: folder) },
-                    leadingContent = { Icon(Icons.Default.FolderOpen, null) },
-                    trailingContent = { if (folder.isNotBlank()) TextButton(onClick = { s.downloadFolder.value = "" }) { Text("Reset") } },
-                    modifier = Modifier.clickable { pickFolder.launch(null) },
-                )
-            }
-            item { ChoiceRow("Downloads at the same time", s.maxParallelDownloads, (1..5).map { it to it.toString() }) }
-
-            item { SectionTitle("Network") }
-            item { ProxyRow(s.proxy) }
-            item { SwitchRow("DNS over HTTPS", "Look up addresses through Cloudflare instead of the network's DNS. Applies after restart.", s.dnsOverHttps) }
-
-            item { SectionTitle("Content") }
-            item {
-                val region by s.region.flow.collectAsStateWithLifecycle()
-                ChoiceRow("Content region", s.region, regions)
-                androidx.compose.runtime.LaunchedEffect(region) {
-                    NpRepo.setRegion(region, s.language.value)
-                    Graph.innerTube.gl = region
-                }
-            }
-
-            item { SectionTitle("Your data") }
-            item { ListItem(headlineContent = { Text("Restore or import") }, supportingContent = { Text("Plover or Kestrel backup, NewPipe subscriptions, or Google Takeout subscriptions.csv") }, modifier = Modifier.clickable { importFile.launch(arrayOf("*/*")) }) }
-            item { ListItem(headlineContent = { Text("Back up") }, supportingContent = { Text("Subscriptions, playlists, history and settings to a file (no login data)") }, modifier = Modifier.clickable { exportFile.launch("plover-backup.json") }) }
-            item { ListItem(headlineContent = { Text("Share app log") }, supportingContent = { Text("For bug reports. No login data.") }, modifier = Modifier.clickable { scope.launch { runCatching { dev.kestrel.app.system.Diagnostics.shareLog(ctx) }.onFailure { nav.message(friendlyError(it)) } } }) }
-            item { ListItem(headlineContent = { Text("Clear watch history") }, modifier = Modifier.clickable { Graph.store.clearHistory(); nav.message("History cleared") }) }
-
-            item { SectionTitle("System status") }
-            item {
-                Column(Modifier.padding(horizontal = 16.dp)) {
-                    if (health.isEmpty()) Text("Not checked yet.", style = MaterialTheme.typography.bodySmall)
-                    health.values.forEach {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
-                            Icon(if (it.ok) Icons.Default.CheckCircle else Icons.Default.Error, null,
-                                tint = if (it.ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-                            Text("  ${it.feature.label}: ${it.message}", style = MaterialTheme.typography.bodySmall)
-                        }
-                    }
-                    OutlinedButton(enabled = !checking, onClick = {
-                        checking = true
-                        scope.launch { runCatching { Health.runAll {} }; checking = false }
-                    }) { Text(if (checking) "Checking…" else "Run check again") }
-                }
-            }
-
-            item { SectionTitle("About") }
-            item {
-                ListItem(headlineContent = { Text("Plover v${BuildConfig.VERSION_NAME}") }, supportingContent = { Text("Check for updates") }, modifier = Modifier.clickable {
-                    scope.launch {
-                        try {
-                            val r = Updater.check()
-                            if (r == null) nav.message("You're on the latest version")
-                            else {
-                                nav.message("Downloading ${r.name}…")
-                                Updater.install(ctx, Updater.download(ctx, r) {})
-                            }
-                        } catch (e: Exception) { nav.message(friendlyError(e)) }
-                    }
-                })
-            }
-            item { ListItem(headlineContent = { Text("Help") }, modifier = Modifier.clickable { nav.go("help") }) }
-            item { ListItem(headlineContent = { Text("License") }, supportingContent = { Text("GNU GPL v3. Uses NewPipeExtractor (GPLv3), Media3, SponsorBlock API.") }) }
             item { HorizontalDivider() }
         }
     }
