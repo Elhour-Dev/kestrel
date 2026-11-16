@@ -238,7 +238,7 @@ object PlayerManager {
         val item = mediaItem(video, uri)
         player.setMediaSource(ProgressiveMediaSource.Factory(dataSourceFactory).createMediaSource(item))
         player.prepare()
-        resume(video.id, video.durationSec)
+        resume(video.id, video.durationSec, video.isLive)
         player.playWhenReady = true
         startService()
         if (video.title.isBlank()) scope.launch {
@@ -315,6 +315,7 @@ object PlayerManager {
     // ------------- loading -------------
 
     private fun load(video: Video) {
+        if (linkStart?.first != video.id) linkStart = null
         saveCurrentPosition()
         loadJob?.cancel()
         retried = false
@@ -463,7 +464,7 @@ object PlayerManager {
             return
         }
         player.prepare()
-        if (keepPosition) player.seekTo(pos) else resume(r.video.id, r.video.durationSec)
+        if (keepPosition) player.seekTo(pos) else resume(r.video.id, r.video.durationSec, r.video.isLive)
         player.playWhenReady = playing
         startService()
     }
@@ -473,8 +474,8 @@ object PlayerManager {
 
     private fun takeLinkStart(id: String): Long? = linkStart?.takeIf { it.first == id }?.second?.also { linkStart = null }
 
-    private fun resume(id: String, durationSec: Long) {
-        takeLinkStart(id)?.let { player.seekTo(it); return }
+    private fun resume(id: String, durationSec: Long, isLive: Boolean) {
+        takeLinkStart(id)?.let { if (!isLive) player.seekTo(it); return }
         if (!Graph.settings.resumePlayback.value) return
         val saved = Graph.store.position(id)
         val durMs = if (durationSec > 0) durationSec * 1000 else Long.MAX_VALUE
@@ -596,7 +597,7 @@ object PlayerManager {
 
     /** Saved position to resume from, in seconds (0 = start). */
     private fun resumeSec(video: Video): Long {
-        takeLinkStart(video.id)?.let { return it / 1000 }
+        takeLinkStart(video.id)?.let { return if (video.isLive) 0 else it / 1000 }
         if (!Graph.settings.resumePlayback.value || video.isLive) return 0
         val saved = Graph.store.position(video.id)
         val durMs = if (video.durationSec > 0) video.durationSec * 1000 else Long.MAX_VALUE

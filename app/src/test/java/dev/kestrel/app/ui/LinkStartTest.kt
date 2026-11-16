@@ -13,5 +13,7 @@ class LinkStartTest {
         assertEquals(30_000L, linkStartMs("https://www.youtube.com/embed/abcdefghijk?start=30"))
         assertNull(linkStartMs("https://www.youtube.com/watch?v=abcdefghijk"))
         assertNull(linkStartMs("https://www.youtube.com/watch?v=abcdefghijk&list=PLt=5"))
+        assertNull(linkStartMs("https://youtu.be/abcdefghijk?t=9223372036854775807"))
+        assertNull(linkStartMs("https://youtu.be/abcdefghijk?t=0"))
     }
 }

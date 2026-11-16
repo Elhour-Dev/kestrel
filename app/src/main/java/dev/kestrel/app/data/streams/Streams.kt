@@ -400,7 +400,8 @@ object Fallback {
                     android.util.Log.i("Kestrel", "signed-in client ${c.name} works for $videoId")
                     return@withContext r
                 } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    // Stop only if this job was cancelled; a solver timeout (also a CancellationException) just fails this client.
+                    ensureActive()
                     android.util.Log.w("Kestrel", "signed-in client ${c.name} failed: ${e.message}")
                     lastError = keepRefused(lastError, e)
                 }
@@ -421,7 +422,8 @@ object Fallback {
                     android.util.Log.i("Kestrel", "backup client ${c.name} works for $videoId (round $round)")
                     return@withContext r
                 } catch (e: Exception) {
-                    if (e is kotlinx.coroutines.CancellationException) throw e
+                    // Stop only if this job was cancelled; a solver timeout (also a CancellationException) just fails this client.
+                    ensureActive()
                     android.util.Log.w("Kestrel", "backup client ${c.name} failed (round $round): ${e.message}")
                     lastError = keepRefused(lastError, e)
                     if ((e.isLinksRefused() || e.isBotCheck()) && ++refusals >= MAX_REFUSALS) throw lastError
