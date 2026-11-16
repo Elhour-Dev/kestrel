@@ -9,6 +9,8 @@ import dev.kestrel.app.data.net.Http
 import dev.kestrel.app.player.JsSolver
 import dev.kestrel.app.data.newpipe.NpRepo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -109,18 +111,19 @@ object Streams {
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            npError = e; null
+            android.util.Log.w("Kestrel", "NewPipe failed for $videoId: $e"); npError = e; null
         }
         suspend fun fallback(): Resolved? = try {
             Fallback.resolve(videoId)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            fbError = e; null
+            android.util.Log.w("Kestrel", "backup clients failed for $videoId: $e"); fbError = e; null
         }
         val fallbackFirst = fallbackWorkedLast ?: (preferFallback || signedIn)
         val t0 = System.currentTimeMillis()
-        val r = if (fallbackFirst) fallback() ?: newPipe() else newPipe() ?: fallback()
+        android.util.Log.i("Kestrel", "links for $videoId: ${if (fallbackFirst) "backup clients" else "NewPipe"} first")
+        val r = hedged(if (fallbackFirst) ::fallback else ::newPipe, if (fallbackFirst) ::newPipe else ::fallback)
         if (r != null) {
             fallbackWorkedLast = r.viaFallback
             android.util.Log.i("Kestrel", "${if (r.viaFallback) "backup clients" else "NewPipe"} gave links for $videoId in ${System.currentTimeMillis() - t0} ms")
@@ -132,6 +135,29 @@ object Streams {
         }
         // NewPipe's errors say best why a video can't play (private, age, region...).
         throw npError ?: fbError ?: IllegalStateException("No video source worked")
+    }
+
+    /** How long the preferred source gets alone before the other one starts too. */
+    internal const val HEDGE_MS = 2_500L
+
+    /** Runs [first]; if it hasn't answered after [HEDGE_MS], starts [second] too and takes whichever gives links first.
+     *  The loser is cancelled without waiting for it (its HTTP calls may be blocking). */
+    internal suspend fun <T : Any> hedged(first: suspend () -> T?, second: suspend () -> T?, hedgeMs: Long = HEDGE_MS): T? {
+        val scope = kotlinx.coroutines.CoroutineScope(kotlin.coroutines.coroutineContext.minusKey(kotlinx.coroutines.Job) + kotlinx.coroutines.SupervisorJob())
+        try {
+            val a = scope.async { first() }
+            val early = kotlinx.coroutines.withTimeoutOrNull(hedgeMs) { a.await() }
+            if (early != null) return early
+            if (a.isCompleted) return a.await() ?: second()
+            val b = scope.async { second() }
+            val winner = kotlinx.coroutines.selects.select<T?> {
+                a.onAwait { it }
+                b.onAwait { it }
+            }
+            return winner ?: a.await() ?: b.await()
+        } finally {
+            scope.cancel()
+        }
     }
 
     /** Checks YouTube really serves one of [r]'s links; throws when it doesn't. */
@@ -422,7 +448,7 @@ object Fallback {
         val nVals = raw.mapNotNull { f -> (f.str("url") ?: cipherOf(f)?.get("url"))?.let(JsSolver::nOf) }
         val sVals = raw.mapNotNull { f -> cipherOf(f)?.get("s") }
         val solved = if (JsSolver.available && (nVals.isNotEmpty() || sVals.isNotEmpty())) {
-            runCatching { JsSolver.solve(nVals, sVals, mobile) }.onFailure { android.util.Log.w("Kestrel", "solver failed: $it") }.getOrNull()
+            runCatching { JsSolver.solve(nVals, sVals, mobile) }.onFailure { if (it is kotlinx.coroutines.CancellationException) throw it; android.util.Log.w("Kestrel", "solver failed: $it") }.getOrNull()
         } else null
         var newPipeBroken = false
 
