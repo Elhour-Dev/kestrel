@@ -155,7 +155,10 @@ private fun VideoSurface(np: NowPlaying, activity: MainActivity, modifier: Modif
     }
     val pvRef = remember { arrayOfNulls<PlayerView>(1) }
     LaunchedEffect(np.video.id, np.loading) {
-        if (!np.loading && np.error == null && !inPip) pvRef[0]?.showController()
+        if (np.loading || np.error != null || inPip) return@LaunchedEffect
+        // Show once playback really starts: shown before that, Media3 keeps the controls up for good.
+        kotlinx.coroutines.withTimeoutOrNull(60_000) { while (!PlayerManager.player.isPlaying) kotlinx.coroutines.delay(200) }
+        pvRef[0]?.showController()
     }
     Box(modifier) {
         AndroidView(
