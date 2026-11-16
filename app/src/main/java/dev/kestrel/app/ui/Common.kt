@@ -31,9 +31,11 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreVert
@@ -190,9 +192,19 @@ fun PagedItemList(
             if (header != null && vm.items.isEmpty() && vm.error != null) item { ErrorState(vm.error!!, Modifier.height(260.dp)) { vm.refresh() } }
             if (vm.loaded && vm.items.isEmpty() && vm.error == null) item { EmptyState(emptyText, Modifier.height(300.dp)) }
             val videos = vm.items.filterIsInstance<Video>()
-            items(vm.items, key = { it.key }) { item ->
-                ItemView(item, compact = compact, onVideo = { nav.openVideo(it, videos.dropWhile { v -> v.id != it.id }) }, menuExtra = menuExtra)
+            // Big feeds show Shorts together in one shelf (after the third item), like the YouTube app.
+            val shorts = if (compact) emptyList() else videos.filter { it.isShort }
+            val showShelf = shorts.size >= 2
+            val list = if (showShelf) vm.items.filterNot { it is Video && it.isShort } else vm.items
+            val shelfAt = minOf(3, list.size)
+            val openShort: (Video) -> Unit = { s -> nav.openVideo(s, shorts.dropWhile { it.id != s.id }) }
+            list.forEachIndexed { i, entry ->
+                if (showShelf && i == shelfAt) item(key = "shorts-shelf") { ShortsShelf(shorts, openShort) }
+                item(key = entry.key) {
+                    ItemView(entry, compact = compact, onVideo = { nav.openVideo(it, videos.dropWhile { v -> v.id != it.id }) }, menuExtra = menuExtra)
+                }
             }
+            if (showShelf && shelfAt == list.size) item(key = "shorts-shelf") { ShortsShelf(shorts, openShort) }
             if (vm.loaded && vm.loading) item { Box(Modifier.fillMaxWidth().padding(16.dp), Alignment.Center) { CircularProgressIndicator(Modifier.size(28.dp)) } }
             if (vm.loaded && vm.items.isNotEmpty() && vm.error != null) item {
                 Text("Couldn't load more: ${vm.error}", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -215,10 +227,15 @@ fun LoadingState(modifier: Modifier = Modifier, skeleton: Boolean = true) {
     val shade = MaterialTheme.colorScheme.surfaceVariant
     Column(modifier.fillMaxSize().clipToBounds().graphicsLayer { this.alpha = alpha }.semantics { contentDescription = "Loading" }) {
         repeat(4) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).background(shade))
-                Box(Modifier.padding(top = 10.dp).fillMaxWidth(0.85f).height(14.dp).clip(RoundedCornerShape(4.dp)).background(shade))
-                Box(Modifier.padding(top = 8.dp).fillMaxWidth(0.5f).height(12.dp).clip(RoundedCornerShape(4.dp)).background(shade))
+            Column(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
+                Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(shade))
+                Row(Modifier.padding(start = 12.dp, end = 12.dp, top = 12.dp)) {
+                    Box(Modifier.size(36.dp).clip(CircleShape).background(shade))
+                    Column(Modifier.weight(1f).padding(start = 12.dp)) {
+                        Box(Modifier.fillMaxWidth(0.9f).height(14.dp).clip(RoundedCornerShape(7.dp)).background(shade))
+                        Box(Modifier.padding(top = 8.dp).fillMaxWidth(0.55f).height(12.dp).clip(RoundedCornerShape(6.dp)).background(shade))
+                    }
+                }
             }
         }
     }
@@ -274,28 +291,28 @@ fun ItemView(item: Item, compact: Boolean = false, onVideo: (Video) -> Unit, men
         is Video -> if (compact) VideoRow(item, { onVideo(item) }, { nav.videoMenu(item, menuExtra(item)) })
         else VideoCard(item, { onVideo(item) }, { nav.videoMenu(item, menuExtra(item)) })
         is Channel -> ChannelRow(item) { nav.openChannel(item.id) }
-        is Playlist -> PlaylistRow(item) { nav.openPlaylist(item.id) }
+        is Playlist -> if (compact) PlaylistRow(item) { nav.openPlaylist(item.id) } else PlaylistCard(item) { nav.openPlaylist(item.id) }
     }
 }
 
-fun videoMeta(v: Video): String = listOfNotNull(
-    v.channelName.takeIf { it.isNotBlank() },
-    if (v.isLive) "LIVE" else v.views.takeIf { it >= 0 }?.let { "${formatCount(it)} views" },
-    v.uploaded?.takeIf { it.isNotBlank() },
-).joinToString(" • ")
+fun videoMeta(v: Video, withChannel: Boolean = true): String = listOfNotNull(
+    v.channelName.takeIf { withChannel && it.isNotBlank() },
+    if (v.isLive) "Live now" else v.views.takeIf { it >= 0 }?.let { "${formatCount(it)} views" },
+    v.uploaded?.takeIf { it.isNotBlank() && !v.isLive },
+).joinToString(" · ")
 
 @Composable
-fun Thumb(v: Video, modifier: Modifier = Modifier, progress: Float = 0f) {
-    Box(modifier.aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
+fun Thumb(v: Video, modifier: Modifier = Modifier, progress: Float = 0f, corner: androidx.compose.ui.unit.Dp = 10.dp) {
+    Box(modifier.aspectRatio(16f / 9f).clip(RoundedCornerShape(corner)).background(MaterialTheme.colorScheme.surfaceVariant)) {
         AsyncImage(v.thumbnail, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         val label = if (v.isLive) "LIVE" else formatDuration(v.durationSec)
         if (label.isNotBlank()) {
             Text(
                 label,
-                Modifier.align(Alignment.BottomEnd).padding(6.dp)
-                    .background(if (v.isLive) Color(0xFFCC0000) else Color(0xCC000000), RoundedCornerShape(4.dp))
+                Modifier.align(Alignment.BottomEnd).padding(8.dp)
+                    .background(if (v.isLive) dev.kestrel.app.ui.theme.LiveRed else dev.kestrel.app.ui.theme.VideoScrim, RoundedCornerShape(4.dp))
                     .padding(horizontal = 5.dp, vertical = 1.dp),
-                color = Color.White, style = MaterialTheme.typography.labelMedium,
+                color = Color.White, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold,
             )
         }
         if (progress > 0.02f) {
@@ -314,14 +331,46 @@ private fun watchProgress(v: Video): Float {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VideoCard(v: Video, onClick: () -> Unit, onMenu: () -> Unit) {
-    Column(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onMenu).padding(horizontal = 12.dp, vertical = 8.dp)) {
-        Thumb(v, Modifier.fillMaxWidth(), watchProgress(v))
-        Row(Modifier.padding(top = 8.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text(v.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(videoMeta(v), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    val nav = LocalNav.current
+    // Full-width thumbnail, then channel picture, title and a short meta line, like the phone YouTube app.
+    Column(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onMenu).padding(bottom = 16.dp)) {
+        Thumb(v, Modifier.fillMaxWidth(), watchProgress(v), corner = 0.dp)
+        Row(Modifier.padding(start = 12.dp, top = 10.dp)) {
+            Box(Modifier.clip(CircleShape).clickable(enabled = v.channelId != null) { v.channelId?.let { nav.openChannel(it) } }) {
+                Avatar(v.channelAvatar, 36)
             }
-            IconButton(onClick = onMenu, Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, "More") }
+            Column(Modifier.weight(1f).padding(start = 12.dp, end = 4.dp)) {
+                Text(v.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(videoMeta(v), Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            IconButton(onClick = onMenu, Modifier.padding(end = 2.dp).size(36.dp)) { Icon(Icons.Default.MoreVert, "More", Modifier.size(20.dp)) }
+        }
+    }
+}
+
+/** Tall Shorts tile for the shelf in feeds. */
+@Composable
+fun ShortTile(v: Video, onClick: () -> Unit) {
+    Box(Modifier.width(150.dp).aspectRatio(9f / 16f).clip(RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant).clickable(onClick = onClick)) {
+        AsyncImage(v.thumbnail, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+        Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(90.dp).background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color(0xB0000000)))))
+        Column(Modifier.align(Alignment.BottomStart).padding(10.dp)) {
+            Text(v.title, color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (v.views >= 0) Text("${formatCount(v.views)} views", color = Color.White.copy(alpha = 0.85f), style = MaterialTheme.typography.labelMedium)
+        }
+    }
+}
+
+/** Row of Shorts inside a feed. */
+@Composable
+fun ShortsShelf(shorts: List<Video>, onOpen: (Video) -> Unit) {
+    Column(Modifier.padding(bottom = 20.dp)) {
+        Row(Modifier.padding(start = 12.dp, top = 4.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Bolt, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
+            Text("Shorts", Modifier.padding(start = 6.dp), style = MaterialTheme.typography.titleLarge)
+        }
+        androidx.compose.foundation.lazy.LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(shorts, key = { it.id }) { s -> ShortTile(s) { onOpen(s) } }
         }
     }
 }
@@ -329,13 +378,15 @@ fun VideoCard(v: Video, onClick: () -> Unit, onMenu: () -> Unit) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun VideoRow(v: Video, onClick: () -> Unit, onMenu: () -> Unit, trailing: (@Composable () -> Unit)? = null) {
-    Row(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onMenu).padding(horizontal = 12.dp, vertical = 6.dp)) {
-        Thumb(v, Modifier.width(160.dp), watchProgress(v))
-        Column(Modifier.weight(1f).padding(start = 10.dp)) {
+    Row(Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = onMenu).padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp)) {
+        Thumb(v, Modifier.width(168.dp), watchProgress(v), corner = 8.dp)
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(v.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(videoMeta(v), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            if (v.channelName.isNotBlank()) Text(v.channelName, Modifier.padding(top = 2.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            val rest = videoMeta(v, withChannel = false)
+            if (rest.isNotBlank()) Text(rest, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-        if (trailing != null) trailing() else IconButton(onClick = onMenu, Modifier.size(32.dp)) { Icon(Icons.Default.MoreVert, "More") }
+        if (trailing != null) trailing() else IconButton(onClick = onMenu, Modifier.size(36.dp)) { Icon(Icons.Default.MoreVert, "More", Modifier.size(20.dp)) }
     }
 }
 
@@ -379,6 +430,27 @@ fun PlaylistRow(p: Playlist, subtitle: String? = null, trailing: (@Composable ()
             Text(subtitle ?: p.owner.ifBlank { "Playlist" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
         trailing?.invoke()
+    }
+}
+
+/** Big playlist / mix card for feeds: full-width picture with a stacked edge and a count badge. */
+@Composable
+fun PlaylistCard(p: Playlist, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(bottom = 16.dp)) {
+        Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp).height(6.dp).clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp)).background(MaterialTheme.colorScheme.surfaceBright))
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(MaterialTheme.colorScheme.surfaceVariant)) {
+            if (p.thumbnail != null) AsyncImage(p.thumbnail, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+            Surface(Modifier.align(Alignment.BottomEnd).padding(8.dp), color = dev.kestrel.app.ui.theme.VideoScrim, shape = RoundedCornerShape(4.dp)) {
+                Row(Modifier.padding(horizontal = 6.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.AutoMirrored.Filled.PlaylistPlay, null, Modifier.size(16.dp), tint = Color.White)
+                    Text(if (p.count >= 0) " ${p.count} videos" else " Playlist", color = Color.White, style = MaterialTheme.typography.labelMedium)
+                }
+            }
+        }
+        Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 10.dp)) {
+            Text(p.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(p.owner.ifBlank { "Playlist" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
 }
 

@@ -20,6 +20,8 @@ data class Video(
     val isLive: Boolean = false,
     val isShort: Boolean = false,
     val uploadedAt: Long = 0,
+    /** Channel picture for the card; null when the source didn't include it. */
+    val channelAvatar: String? = null,
 ) : Item {
     override val key get() = "v:$id"
     val url get() = "https://www.youtube.com/watch?v=$id"

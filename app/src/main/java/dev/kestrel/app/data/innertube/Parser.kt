@@ -81,6 +81,7 @@ object Parser {
             views = parseViews(v.obj("viewCountText").text() ?: v.obj("shortViewCountText").text()),
             uploaded = v.obj("publishedTimeText").text(),
             isLive = live,
+            channelAvatar = v.findAll("channelThumbnailWithLinkRenderer").firstOrNull()?.obj("thumbnail").thumb(),
         )
     }
 
@@ -120,6 +121,7 @@ object Parser {
                 views = parseViews(parts.firstOrNull { it.contains("view", true) }),
                 uploaded = parts.firstOrNull { it.contains("ago", true) },
                 isLive = badges.any { it.equals("LIVE", true) },
+                channelAvatar = meta.findAll("avatarViewModel").firstOrNull()?.obj("image").thumb(),
             )
             "LOCKUP_CONTENT_TYPE_PLAYLIST", "LOCKUP_CONTENT_TYPE_PODCAST", "LOCKUP_CONTENT_TYPE_ALBUM" -> Playlist(
                 id = id,
