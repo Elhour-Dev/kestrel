@@ -17,20 +17,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Subscriptions
-import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.WatchLater
-import androidx.compose.material.icons.filled.Whatshot
-import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Subscriptions
-import androidx.compose.material.icons.outlined.VideoLibrary
-import androidx.compose.material.icons.outlined.Whatshot
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,8 +30,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -78,14 +68,6 @@ import dev.kestrel.app.player.PlayerManager
 import dev.kestrel.app.ui.screens.*
 import kotlinx.coroutines.launch
 
-private data class Tab(val route: String, val label: String, val icon: ImageVector, val selected: ImageVector)
-
-private val tabs = listOf(
-    Tab("home", "Home", Icons.Outlined.Home, Icons.Filled.Home),
-    Tab("shorts", "Shorts", Icons.Outlined.Whatshot, Icons.Filled.Whatshot),
-    Tab("subs", "Subscriptions", Icons.Outlined.Subscriptions, Icons.Filled.Subscriptions),
-    Tab("library", "Library", Icons.Outlined.VideoLibrary, Icons.Filled.VideoLibrary),
-)
 
 @UnstableApi
 @OptIn(ExperimentalMaterial3Api::class)
@@ -129,7 +111,7 @@ fun KestrelRoot(activity: MainActivity) {
     }
 
     val fullscreenPlayer = route == "player" && (MainActivity.Ui.fullscreen || MainActivity.Ui.inPip)
-    val showChrome = route in tabs.map { it.route }
+    val showChrome = route in chromeRoutes
     val showMini = route !in setOf("player", "startup", "onboarding", "login", "shortsplayer") && !MainActivity.Ui.inPip
 
     CompositionLocalProvider(LocalNav provides appNav) {
@@ -138,20 +120,11 @@ fun KestrelRoot(activity: MainActivity) {
             bottomBar = {
                 if (!fullscreenPlayer) Column {
                     if (showMini) MiniPlayer { nav.navigate("player") { launchSingleTop = true } }
-                    if (showChrome) NavigationBar {
-                        tabs.forEach { t ->
-                            NavigationBarItem(
-                                selected = route == t.route,
-                                onClick = {
-                                    nav.navigate(t.route) {
-                                        popUpTo("home") { saveState = true }
-                                        launchSingleTop = true
-                                        restoreState = true
-                                    }
-                                },
-                                icon = { Icon(if (route == t.route) t.selected else t.icon, null) },
-                                label = { Text(t.label) },
-                            )
+                    if (showChrome) BottomBar(route) { r ->
+                        nav.navigate(r) {
+                            popUpTo("home") { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
                         }
                     }
                 }
@@ -164,9 +137,10 @@ fun KestrelRoot(activity: MainActivity) {
                     composable("startup") { StartupScreen { next -> nav.navigate(next) { popUpTo("startup") { inclusive = true } } } }
                     composable("onboarding") { OnboardingScreen { nav.navigate("home") { popUpTo("onboarding") { inclusive = true } } } }
                     composable("login") { LoginScreen() }
-                    composable("home") { HomeScreen() }
+                    composable("home") { HomeScreen("home") }
                     composable("shorts") { ShortsScreen() }
-                    composable("subs") { SubscriptionsScreen() }
+                    composable("subs") { HomeScreen("subs") }
+                    composable("kiosk/{id}") { KioskScreen(it.arguments?.getString("id").orEmpty()) }
                     composable("library") { LibraryScreen() }
                     composable("search") { SearchScreen() }
                     composable("channel/{id}") { ChannelScreen(it.arguments?.getString("id").orEmpty()) }

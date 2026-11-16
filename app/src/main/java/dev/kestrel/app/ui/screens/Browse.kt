@@ -30,6 +30,11 @@ import androidx.compose.material.icons.filled.Subscriptions
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.filled.WatchLater
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.LiveTv
+import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -86,28 +91,13 @@ suspend fun moreAny(token: Any): Page<Item> = when (token) {
     else -> Page(emptyList())
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Top bar of the Home tabs: logo, then search (and the bell once notifications are on). */
 @Composable
-fun MainTopBar(title: String) {
+fun MainTopBar() {
     val nav = LocalNav.current
-    val session by Graph.account.session.collectAsStateWithLifecycle()
-    TopAppBar(
-        title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Logo(28)
-                Spacer(Modifier.width(10.dp))
-                Text(title)
-            }
-        },
-        actions = {
-            IconButton(onClick = { nav.go("search") }) { Icon(Icons.Default.Search, "Search") }
-            IconButton(onClick = { nav.go("settings") }) {
-                val avatar = session?.avatar
-                if (!avatar.isNullOrBlank()) Box(Modifier.semantics { contentDescription = "Settings" }) { Avatar(avatar, 28) }
-                else Icon(Icons.Default.Settings, "Settings")
-            }
-        },
-    )
+    dev.kestrel.app.ui.BrandBar {
+        dev.kestrel.app.ui.BarIcon(Icons.Default.Search, "Search") { nav.go("search") }
+    }
 }
 
 @Composable
@@ -128,7 +118,7 @@ fun HealthBanner() {
 }
 
 @Composable
-fun HomeScreen() {
+fun HomeScreen(start: String = "home") {
     val accountState by Graph.account.state.collectAsStateWithLifecycle()
     val signedIn = accountState == AccountState.SignedIn
     val kiosks = remember {
@@ -136,24 +126,84 @@ fun HomeScreen() {
             .filter { it !in BROKEN_KIOSKS }
             .sortedBy { KIOSK_ORDER.indexOf(it).let { i -> if (i < 0) KIOSK_ORDER.size else i } }
     }
-    var source by remember(signedIn) { mutableStateOf(if (signedIn) "foryou" else kiosks.firstOrNull() ?: "") }
+    var tab by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(start) }
+    val tabs = buildList {
+        add("home" to "Home")
+        add("subs" to "Subs")
+        if ("trending_music" in kiosks) add("trending_music" to "Music")
+        if ("live" in kiosks) add("live" to "Live")
+        add("more" to "More")
+    }
     Column {
-        MainTopBar("Plover")
+        MainTopBar()
         HealthBanner()
-        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (signedIn) item { FilterChip(source == "foryou", { source = "foryou" }, { Text("For you") }) }
-            items(kiosks) { k -> FilterChip(source == k, { source = k }, { Text(kioskLabel(k)) }) }
+        dev.kestrel.app.ui.TopTabs(tabs, tab) { tab = it }
+        when (tab) {
+            "subs" -> SubsFeed()
+            "more" -> MoreList(kiosks.filter { it != "trending_music" && it != "live" })
+            "home" -> {
+                // Signed in: the account's own feed. Signed out: a mix of the category pages.
+                val vm = viewModel(key = "home-$signedIn") {
+                    itemsVm(
+                        first = { if (signedIn) Graph.innerTube.home() else Page(mixedKiosks(kiosks)) },
+                        more = ::moreAny,
+                    )
+                }
+                PagedItemList(vm, "Nothing here right now. Try again later.")
+            }
+            else -> {
+                val vm = viewModel(key = "home-$tab") { itemsVm({ NpRepo.kiosk(tab) }, ::moreAny) }
+                PagedItemList(vm, "Nothing here right now. Try again later.")
+            }
         }
-        val vm = viewModel(key = "home-$source") {
-            itemsVm(
-                first = {
-                    if (source == "foryou") Graph.innerTube.home()
-                    else NpRepo.kiosk(source.ifBlank { null })
-                },
-                more = ::moreAny,
+    }
+}
+
+/** First page of each category, interleaved, for the signed-out Home tab. */
+private suspend fun mixedKiosks(kiosks: List<String>): List<Item> = coroutineScope {
+    val pages = kiosks.filter { it != "live" }.map { k -> async { runCatching { NpRepo.kiosk(k).items }.getOrDefault(emptyList()) } }.awaitAll()
+    val out = mutableListOf<Item>()
+    val seen = HashSet<String>()
+    val longest = pages.maxOfOrNull { it.size } ?: 0
+    for (i in 0 until longest) pages.forEach { p ->
+        val item = p.getOrNull(i) ?: return@forEach
+        val id = (item as? Video)?.id
+        if (id == null || seen.add(id)) out += item
+    }
+    if (out.isEmpty()) throw java.io.IOException("Couldn't load videos")
+    out
+}
+
+/** "More" tab: the other category pages. */
+@Composable
+private fun MoreList(kiosks: List<String>) {
+    val nav = LocalNav.current
+    LazyColumn(Modifier.fillMaxSize()) {
+        items(kiosks) { k ->
+            ListItem(
+                headlineContent = { Text(kioskLabel(k), style = MaterialTheme.typography.titleMedium) },
+                leadingContent = { Icon(kioskIcon(k), null, Modifier.size(26.dp)) },
+                modifier = Modifier.clickable { nav.go("kiosk/$k") },
             )
         }
-        PagedItemList(vm, "Nothing here right now. Pull a different tab or try again later.")
+    }
+}
+
+private fun kioskIcon(id: String): ImageVector = when (id) {
+    "trending_gaming" -> Icons.Default.SportsEsports
+    "trending_movies_and_shows" -> Icons.Default.Movie
+    "trending_music" -> Icons.Default.MusicNote
+    "live" -> Icons.Default.LiveTv
+    else -> Icons.Default.Whatshot
+}
+
+/** One category page opened from "More". */
+@Composable
+fun KioskScreen(id: String) {
+    Column {
+        BackTopBar(kioskLabel(id))
+        val vm = viewModel(key = "kiosk-$id") { itemsVm({ NpRepo.kiosk(id) }, ::moreAny) }
+        PagedItemList(vm, "Nothing here right now. Try again later.")
     }
 }
 
@@ -170,14 +220,13 @@ private fun kioskLabel(id: String) = when (id) {
 }
 
 @Composable
-fun SubscriptionsScreen() {
+fun SubsFeed() {
     val nav = LocalNav.current
     val lib by Graph.store.library.collectAsStateWithLifecycle()
     val accountState by Graph.account.state.collectAsStateWithLifecycle()
     val signedIn = accountState == AccountState.SignedIn
     val subs = lib.subscriptions
     Column {
-        MainTopBar("Subscriptions")
         if (subs.isNotEmpty()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LazyRow(Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -225,7 +274,10 @@ fun LibraryScreen() {
     val signedIn = accountState == AccountState.SignedIn
     val downloads by Graph.downloads.items.collectAsStateWithLifecycle()
     Column {
-        MainTopBar("Library")
+        dev.kestrel.app.ui.BrandBar {
+            dev.kestrel.app.ui.BarIcon(Icons.Default.Search, "Search") { nav.go("search") }
+            dev.kestrel.app.ui.BarIcon(Icons.Default.Settings, "Settings") { nav.go("settings") }
+        }
         LazyColumn(Modifier.fillMaxSize()) {
             if (lib.history.isNotEmpty()) {
                 item { SectionTitle("Recently watched") }
@@ -271,6 +323,8 @@ fun BackTopBar(title: String, actions: @Composable androidx.compose.foundation.l
         title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         navigationIcon = { IconButton(onClick = { nav.back() }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") } },
         actions = actions,
+        // The screen's Scaffold already leaves room for the status bar.
+        windowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     )
 }
 
