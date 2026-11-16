@@ -206,80 +206,75 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
         }
     }
 
+    var showDescription by remember(v.id) { mutableStateOf(false) }
+    var firstComment by remember(v.id) { mutableStateOf<dev.kestrel.app.data.model.Comment?>(null) }
+    LaunchedEffect(v.id, np.localPath) {
+        if (np.localPath != null) return@LaunchedEffect
+        firstComment = runCatching { Graph.innerTube.comments(v.id).comments.firstOrNull() }.getOrNull()
+    }
+    val collabs = info?.collaborators.orEmpty()
+    val avatar = r?.channelAvatar ?: info?.channelAvatar
+    val description = r?.description?.ifBlank { null } ?: info?.description.orEmpty()
+    val viewsText = v.views.takeIf { it >= 0 }?.let { "${formatCount(it)} views" } ?: np.info?.views?.ifBlank { null }
+    val dateText = r?.uploadDate ?: v.uploaded ?: np.info?.date?.ifBlank { null }
+    val likesText = r?.likes?.takeIf { it >= 0 }?.let { formatCount(it) } ?: info?.likes?.ifBlank { null }
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp).animateContentSize()) {
-                Text(v.title.ifBlank { if (np.error != null) "Video unavailable" else "Loading…" }, style = MaterialTheme.typography.titleMedium, maxLines = if (expanded) 10 else 2, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.clickable { expanded = !expanded })
-                val meta = listOfNotNull(
-                    v.views.takeIf { it >= 0 }?.let { "${formatCount(it)} views" } ?: np.info?.views?.ifBlank { null },
-                    r?.uploadDate ?: v.uploaded ?: np.info?.date?.ifBlank { null },
-                    if (np.segments.isNotEmpty()) "${np.segments.size} SponsorBlock segments" else null,
-                ).joinToString(" • ")
-                if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        item {
-            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item {
-                    Chip(if (like == "LIKE") Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp, r?.likes?.takeIf { it >= 0 }?.let { formatCount(it) } ?: info?.likes?.ifBlank { null } ?: "Like", like == "LIKE") { rate("LIKE") }
-                }
-                item { Chip(if (like == "DISLIKE") Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown, "Dislike", like == "DISLIKE") { rate("DISLIKE") } }
-                if (np.web && webQ.heights.isNotEmpty()) item {
-                    Chip(Icons.Default.HighQuality, webQ.current.takeIf { it > 0 }?.let { "${it}p" } ?: "Quality") { showQuality = true }
-                } else if (r != null && !r.isLive && np.localPath == null && !np.web) item {
-                    Chip(Icons.Default.HighQuality, r.pickVideo(np.quality)?.label ?: "Quality") { showQuality = true }
-                }
-                item { Chip(Icons.AutoMirrored.Filled.PlaylistAdd, "Save") { saveFor = v } }
-                item { Chip(Icons.Default.Download, "Download") { downloadFor = v } }
-                item { Chip(Icons.Default.Headphones, "Audio only", np.audioOnly) { PlayerManager.setAudioOnly(!np.audioOnly) } }
-                item {
-                    Chip(Icons.AutoMirrored.Outlined.OpenInNew, "Popup") {
-                        if (np.web) {
-                            nav.message("Popup isn't available in the web player")
-                        } else if (PopupService.canDraw(ctx)) {
-                            PopupService.start(ctx)
-                            nav.back()
-                            activity.moveTaskToBack(true)
-                        } else {
-                            nav.message("Allow \"Display over other apps\" for the popup player")
-                            ctx.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}")))
-                        }
-                    }
-                }
-                item { Chip(Icons.Default.PictureInPicture, "PiP") { activity.enterPip() } }
-                item {
-                    Chip(Icons.Default.Share, "Share") {
-                        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, v.url), "Share"))
-                    }
+            Column(Modifier.fillMaxWidth().clickable { showDescription = true }.padding(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 6.dp)) {
+                Text(v.title.ifBlank { if (np.error != null) "Video unavailable" else "Loading…" }, style = MaterialTheme.typography.titleLarge,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                val meta = listOfNotNull(viewsText, dateText).joinToString("  ")
+                Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(meta, Modifier.weight(1f, fill = false), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("  ...more", style = MaterialTheme.typography.bodySmall, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold)
                 }
             }
         }
         item {
-            val collabs = info?.collaborators.orEmpty()
-            val avatar = r?.channelAvatar ?: info?.channelAvatar
-            Row(Modifier.fillMaxWidth().clickable { if (collabs.isNotEmpty()) showCollabs = true else v.channelId?.let { nav.openChannel(it) } }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Avatar(avatar, 40)
-                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    Text(if (collabs.isNotEmpty()) collabs.joinToString(" and ") { it.name } else v.channelName, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    val subs = r?.subscribers?.takeIf { it >= 0 }?.let { formatCount(it) } ?: info?.subscribers?.ifBlank { null }
-                    if (collabs.isNotEmpty()) Text("${collabs.size} channels • tap to see them", style = MaterialTheme.typography.bodySmall)
-                    else subs?.let { Text("$it subscribers", style = MaterialTheme.typography.bodySmall) }
-                }
+            Row(Modifier.fillMaxWidth().clickable { if (collabs.isNotEmpty()) showCollabs = true else v.channelId?.let { nav.openChannel(it) } }
+                .padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Avatar(avatar, 36)
+                Text(if (collabs.isNotEmpty()) collabs.joinToString(" and ") { it.name } else v.channelName, Modifier.padding(start = 10.dp),
+                    style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                val subs = if (collabs.isNotEmpty()) "${collabs.size} channels" else r?.subscribers?.takeIf { it >= 0 }?.let { formatCount(it) } ?: info?.subscribers?.ifBlank { null }
+                subs?.let { Text("  $it", Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+                    ?: Spacer(Modifier.weight(1f))
                 if (collabs.isEmpty()) v.channelId?.let { cid ->
                     SubscribeButton(Channel(cid, v.channelName, avatar), info?.subscribeParams?.takeIf { info.channelId == cid })
                 }
             }
         }
-        val description = r?.description?.ifBlank { null } ?: info?.description.orEmpty()
-        if (description.isNotBlank()) item {
-            Surface(Modifier.fillMaxWidth().padding(horizontal = 12.dp).clickable { expanded = !expanded }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-                Text(description, Modifier.padding(12.dp).animateContentSize(), maxLines = if (expanded) Int.MAX_VALUE else 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+        item {
+            LazyRow(contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                item { LikePill(like, likesText, { rate("LIKE") }, { rate("DISLIKE") }) }
+                item {
+                    Pill(Icons.Default.Share, "Share") {
+                        ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, v.url), "Share"))
+                    }
+                }
+                item { Pill(Icons.AutoMirrored.Filled.PlaylistAdd, "Save") { saveFor = v } }
+                item { Pill(Icons.Default.Download, "Download") { downloadFor = v } }
+                if (np.web && webQ.heights.isNotEmpty()) item {
+                    Pill(Icons.Default.HighQuality, webQ.current.takeIf { it > 0 }?.let { "${it}p" } ?: "Quality") { showQuality = true }
+                } else if (r != null && !r.isLive && np.localPath == null && !np.web) item {
+                    Pill(Icons.Default.HighQuality, r.pickVideo(np.quality)?.label ?: "Quality") { showQuality = true }
+                }
+                item { Pill(Icons.Default.PictureInPicture, "PiP") { activity.enterPip() } }
             }
         }
         if (np.localPath == null) item {
             Surface(Modifier.fillMaxWidth().padding(12.dp).clickable { showComments = true }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
-                Text("Comments", Modifier.padding(14.dp), style = MaterialTheme.typography.titleSmall)
+                Column(Modifier.padding(12.dp)) {
+                    Text("Comments", style = MaterialTheme.typography.titleSmall)
+                    firstComment?.let { c ->
+                        Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Avatar(c.authorAvatar, 24)
+                            Text(c.text, Modifier.padding(start = 8.dp), style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
             }
         }
         if (queue.size > 1) {
@@ -290,12 +285,19 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
         }
         val related = r?.related.orEmpty().ifEmpty { info?.related.orEmpty() }
         if (related.isNotEmpty()) {
-            item { SectionTitle("Related") }
+            if (queue.size > 1) item { SectionTitle("Related") } else item { Spacer(Modifier.height(4.dp)) }
             items(related, key = { "r" + it.key }) { item ->
-                ItemView(item, compact = true, onVideo = { nav.openVideo(it, listOf(it)) })
+                ItemView(item, compact = false, onVideo = { nav.openVideo(it, listOf(it)) })
             }
         }
     }
+
+    if (showDescription) DescriptionSheet(
+        title = v.title,
+        stats = listOfNotNull(likesText?.let { it to "Likes" }, viewsText?.let { it.removeSuffix(" views") to "Views" }, dateText?.let { it to "Date" }),
+        segments = np.segments.size,
+        description = description,
+    ) { showDescription = false }
 
     if (showQuality && (np.web || r != null)) {
         // Web player: "Auto" (0) lets YouTube adapt to the network.
@@ -323,15 +325,64 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
     downloadFor?.let { DownloadDialog(it) { downloadFor = null } }
 }
 
+/** Rounded grey pill used for the watch-page actions. */
 @Composable
-private fun Chip(icon: ImageVector, label: String, selected: Boolean = false, onClick: () -> Unit) {
-    AssistChip(
-        onClick = onClick,
-        label = { Text(label) },
-        leadingIcon = { Icon(icon, null, Modifier.size(18.dp)) },
-        shape = RoundedCornerShape(50),
-        colors = if (selected) AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.primaryContainer) else AssistChipDefaults.assistChipColors(),
-    )
+private fun Pill(icon: ImageVector, label: String, onClick: () -> Unit) {
+    Surface(onClick = onClick, shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Row(Modifier.padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, Modifier.size(20.dp))
+            Text(label, Modifier.padding(start = 6.dp), style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+/** Like | Dislike in one pill, like the YouTube app. */
+@Composable
+private fun LikePill(like: String?, likes: String?, onLike: () -> Unit, onDislike: () -> Unit) {
+    Surface(shape = RoundedCornerShape(50), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.clickable(onClick = onLike).padding(start = 14.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(if (like == "LIKE") Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp, if (like == "LIKE") "Remove like" else "Like", Modifier.size(20.dp))
+                Text(likes ?: "Like", Modifier.padding(start = 6.dp), style = MaterialTheme.typography.labelLarge)
+            }
+            Box(Modifier.width(1.dp).height(22.dp).background(MaterialTheme.colorScheme.outline))
+            Box(Modifier.clickable(onClick = onDislike).padding(start = 12.dp, end = 14.dp, top = 8.dp, bottom = 8.dp)) {
+                Icon(if (like == "DISLIKE") Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown, if (like == "DISLIKE") "Remove dislike" else "Dislike", Modifier.size(20.dp))
+            }
+        }
+    }
+}
+
+/** Full description with the numbers on top, opened from "...more". */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun DescriptionSheet(title: String, stats: List<Pair<String, String>>, segments: Int, description: String, onDismiss: () -> Unit) {
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 32.dp)) {
+            item { Text("Description", style = MaterialTheme.typography.titleLarge) }
+            item { Text(title, Modifier.padding(top = 12.dp), style = MaterialTheme.typography.titleMedium) }
+            if (stats.isNotEmpty()) item {
+                Row(Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    stats.forEach { (value, label) ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(value, style = MaterialTheme.typography.titleMedium, textAlign = TextAlign.Center)
+                            Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            if (segments > 0) item {
+                Text("$segments SponsorBlock segments", Modifier.padding(bottom = 12.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.secondary)
+            }
+            item {
+                Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                    androidx.compose.foundation.text.selection.SelectionContainer {
+                        Text(description.ifBlank { "No description." }, Modifier.padding(12.dp), style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** The channels of a collaboration video: open or subscribe to each one. */

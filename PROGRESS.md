@@ -27,7 +27,11 @@ Player overlay (commit after b669ac3): Compose controls for direct + web, gear s
 captions, audio track, sleep timer, loop, audio only, PiP, popup), double-tap seek, hold 2x, swipe up fullscreen /
 down minimize, brightness/volume swipes in fullscreen. GestureFrame removed.
 Phone-tested in WEB mode only: controls, auto-hide, settings sheet, 1.5x speed, double-tap +10 s, swipe up fullscreen.
-OPEN: Back in fullscreen once left a black paused screen (not reproduced yet). Direct mode, captions, audio track,
+FIXED 710e196: Back from fullscreen stayed landscape when the phone lies flat (now portrait, then sensor).
+Watch page restyled (title, meta + "...more" description sheet, channel row, like|dislike pill, Share/Save/Download/Quality/PiP pills,
+comments card with first comment, related as big cards). Direct mode tested via a downloaded file.
+VPN 2026-11-16 20:38: phone v2rayNG switched Tokyo-VLESS -> Tokyo-Hy2 (user asked to fix network). Links 49 s -> 8-13 s, play in 14-21 s.
+Earlier note (old): Back in fullscreen once left a black paused screen (not reproduced yet). Direct mode, captions, audio track,
 sleep timer, PiP, popup, local file, live not yet tested on the new overlay.
 
 ### Reference: YouTube Android app on the phone (2026-11-16)
