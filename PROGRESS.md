@@ -4,6 +4,18 @@ Build: `JAVA_HOME="C:/Program Files/Android/openjdk/jdk-21.0.8" ./gradlew assemb
 adb: `C:\Program Files (x86)\Android\android-sdk\platform-tools\adb.exe` (phone: Galaxy A55)
 Repo: github.com/Elhour-Dev/kestrel (private for now; must be public for in-app updates)
 
+
+## Quality fix (2026-11-16) — DONE, commit 004cff0 (build 258, local only)
+- Cause: web mode (used whenever links are blocked) hid the Quality chip and ignored setQuality.
+- Fix: WebHost reads levels via movie_player.getAvailableQualityLevels() and applies setPlaybackQualityRange (works on m.youtube.com, tested). Default quality applied at web start. Chip moved after Dislike.
+- Phone tests: direct 720p->360p (decoder 640x360), web 720p->240p (current=small). Default 720 applied in web for normal video and Shorts.
+- Regression pass OK: startup, home, search+suggestions, channel, playback, SponsorBlock skip, comments, auto-PiP, PiP return, background play, mini player, library, history, watch later, downloads screen, subscriptions, settings, Shorts.
+- Seen once, not reproduced: playback stopped after PiP->return->comments->back x2; a Short hung ~2 min when the network switched to blocked links.
+
+## UI redesign "Plover" (plan approved 2026-11-16) — branch ui-redesign
+Plan file: ~/.claude/plans/pasted-content-id-915c-first-use-cheeky-hellman.md. Dark only. Keep applicationId dev.kestrel.app.
+Install test builds with -PversionCode=258+ and adb install -r (never uninstall / pm clear).
+
 ## Findings
 - NewPipeExtractor v0.27.1 works (Nov 2026). Stream URLs use client `c=VISIONOS`;
   plain GET + Range or `&range=` param both work. Live videos: use `hlsUrl`.
