@@ -219,14 +219,20 @@ fun SettingsScreen() {
     }
     val exportFile = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) runCatching {
-            ctx.contentResolver.openOutputStream(uri)!!.use { it.write(Graph.store.exportJson().toByteArray()) }
-            nav.message("Library exported")
+            val lib = kotlinx.serialization.json.Json.parseToJsonElement(Graph.store.exportJson()) as kotlinx.serialization.json.JsonObject
+            val backup = kotlinx.serialization.json.JsonObject(lib + ("settings" to s.export()))
+            ctx.contentResolver.openOutputStream(uri)!!.use { it.write(backup.toString().toByteArray()) }
+            nav.message("Backup saved")
         }.onFailure { nav.message(friendlyError(it)) }
     }
     val importFile = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             val text = ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes().decodeToString() }
-            nav.message(Graph.store.import(text))
+            var msg = Graph.store.import(text)
+            // Kestrel backups also carry settings.
+            val settings = runCatching { (kotlinx.serialization.json.Json.parseToJsonElement(text) as kotlinx.serialization.json.JsonObject)["settings"] as? kotlinx.serialization.json.JsonObject }.getOrNull()
+            if (settings != null) msg += ", ${s.restore(settings)} settings"
+            nav.message(msg)
         }.onFailure { nav.message("Import failed: ${friendlyError(it)}") }
     }
 
@@ -312,8 +318,9 @@ fun SettingsScreen() {
             }
 
             item { SectionTitle("Your data") }
-            item { ListItem(headlineContent = { Text("Import") }, supportingContent = { Text("Kestrel backup, NewPipe subscriptions, or Google Takeout subscriptions.csv") }, modifier = Modifier.clickable { importFile.launch(arrayOf("*/*")) }) }
-            item { ListItem(headlineContent = { Text("Export") }, supportingContent = { Text("Subscriptions, playlists, history (no login data)") }, modifier = Modifier.clickable { exportFile.launch("kestrel-backup.json") }) }
+            item { ListItem(headlineContent = { Text("Restore or import") }, supportingContent = { Text("Kestrel backup, NewPipe subscriptions, or Google Takeout subscriptions.csv") }, modifier = Modifier.clickable { importFile.launch(arrayOf("*/*")) }) }
+            item { ListItem(headlineContent = { Text("Back up") }, supportingContent = { Text("Subscriptions, playlists, history and settings to a file (no login data)") }, modifier = Modifier.clickable { exportFile.launch("kestrel-backup.json") }) }
+            item { ListItem(headlineContent = { Text("Share app log") }, supportingContent = { Text("For bug reports. No login data.") }, modifier = Modifier.clickable { scope.launch { runCatching { dev.kestrel.app.system.Diagnostics.shareLog(ctx) }.onFailure { nav.message(friendlyError(it)) } } }) }
             item { ListItem(headlineContent = { Text("Clear watch history") }, modifier = Modifier.clickable { Graph.store.clearHistory(); nav.message("History cleared") }) }
 
             item { SectionTitle("System status") }

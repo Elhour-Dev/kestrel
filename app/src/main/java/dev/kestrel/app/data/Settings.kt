@@ -4,11 +4,18 @@ import android.content.Context
 import android.content.SharedPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonPrimitive
 
 /** Small preference holder: every setting is a StateFlow the UI can observe. */
 class Pref<T>(
     private val prefs: SharedPreferences,
-    private val key: String,
+    val key: String,
     default: T,
     private val read: SharedPreferences.(String, T) -> T,
     private val write: SharedPreferences.Editor.(String, T) -> Unit,
@@ -26,11 +33,41 @@ class Pref<T>(
 class Settings(context: Context) {
     private val p = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
 
-    private fun bool(k: String, d: Boolean) = Pref(p, k, d, { a, b -> getBoolean(a, b) }, { a, b -> putBoolean(a, b) })
-    private fun int(k: String, d: Int) = Pref(p, k, d, { a, b -> getInt(a, b) }, { a, b -> putInt(a, b) })
-    private fun str(k: String, d: String) = Pref(p, k, d, { a, b -> getString(a, b) ?: b }, { a, b -> putString(a, b) })
+    private val all = mutableListOf<Pref<*>>()
+    private fun <T> reg(pref: Pref<T>) = pref.also { all += it }
+    private fun bool(k: String, d: Boolean) = reg(Pref(p, k, d, { a, b -> getBoolean(a, b) }, { a, b -> putBoolean(a, b) }))
+    private fun int(k: String, d: Int) = reg(Pref(p, k, d, { a, b -> getInt(a, b) }, { a, b -> putInt(a, b) }))
+    private fun str(k: String, d: String) = reg(Pref(p, k, d, { a, b -> getString(a, b) ?: b }, { a, b -> putString(a, b) }))
     private fun set(k: String, d: Set<String>) =
-        Pref(p, k, d, { a, b -> getStringSet(a, b)?.toSet() ?: b }, { a, b -> putStringSet(a, b) })
+        reg(Pref(p, k, d, { a, b -> getStringSet(a, b)?.toSet() ?: b }, { a, b -> putStringSet(a, b) }))
+
+    /** Not backed up: a folder permission doesn't carry over to another install. */
+    private val notBackedUp = setOf("download_folder")
+
+    /** Every setting as JSON, for backups. */
+    fun export(): JsonObject = JsonObject(all.filter { it.key !in notBackedUp }.associate { pref ->
+        pref.key to when (val v = pref.value) {
+            is Boolean -> JsonPrimitive(v)
+            is Int -> JsonPrimitive(v)
+            is Set<*> -> JsonArray(v.map { JsonPrimitive(it.toString()) })
+            else -> JsonPrimitive(v.toString())
+        }
+    })
+
+    /** Restores settings from [export]'s JSON; unknown keys and wrong types are skipped. Returns how many were set. */
+    @Suppress("UNCHECKED_CAST")
+    fun restore(o: JsonObject): Int = all.filter { it.key !in notBackedUp }.count { pref ->
+        val e: JsonElement = o[pref.key] ?: return@count false
+        runCatching {
+            when (pref.value) {
+                is Boolean -> (pref as Pref<Boolean>).value = e.jsonPrimitive.booleanOrNull ?: return@count false
+                is Int -> (pref as Pref<Int>).value = e.jsonPrimitive.intOrNull ?: return@count false
+                is Set<*> -> (pref as Pref<Set<String>>).value = (e as JsonArray).map { it.jsonPrimitive.content }.toSet()
+                else -> (pref as Pref<String>).value = e.jsonPrimitive.content
+            }
+            true
+        }.getOrDefault(false)
+    }
 
     /** "system", "light" or "dark". */
     val theme = str("theme", "system")
