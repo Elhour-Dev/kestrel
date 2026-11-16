@@ -81,6 +81,8 @@ class Settings(context: Context) {
     /** SAF tree URI, or "" for the app's own Movies/Music folder. */
     val downloadFolder = str("download_folder", "")
     val maxParallelDownloads = int("max_parallel_downloads", 3)
+    /** On Wi-Fi, download a few recommended videos for offline (off by default). */
+    val smartDownloads = bool("smart_downloads", false)
     val region = str("region", "US")
     val language = str("language", "en")
     val backgroundPlay = bool("background_play", true)

@@ -48,6 +48,7 @@ class KestrelApp : Application(), SingletonImageLoader.Factory {
         dev.kestrel.app.player.JsSolver.install(this)
         createChannels()
         dev.kestrel.app.system.YtNotifications.schedule(this)
+        dev.kestrel.app.downloads.SmartDownloads.schedule(this)
         PlayerManager.init(this)
         Graph.downloads = Downloads(this)
     }

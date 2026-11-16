@@ -337,6 +337,11 @@ fun SettingsScreen() {
                     )
                 }
                 item { ChoiceRow("Downloads at the same time", s.maxParallelDownloads, (1..5).map { it to it.toString() }) }
+                item {
+                    SwitchRow("Smart downloads", "On Wi-Fi, save a few recommended videos (360p) to watch offline. Keeps up to ${dev.kestrel.app.downloads.SmartDownloads.KEEP}.", s.smartDownloads)
+                    val on by s.smartDownloads.flow.collectAsStateWithLifecycle()
+                    androidx.compose.runtime.LaunchedEffect(on) { dev.kestrel.app.downloads.SmartDownloads.schedule(Graph.app) }
+                }
 
             }
             if (section == "Network") {

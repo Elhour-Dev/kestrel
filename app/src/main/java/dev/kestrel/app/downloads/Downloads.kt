@@ -59,6 +59,8 @@ data class DownloadItem(
     val videoItag: Int = 0,
     val audioItag: Int = 0,
     val created: Long = System.currentTimeMillis(),
+    /** Picked by smart downloads (not by the user). */
+    val smart: Boolean = false,
 ) {
     val progress get() = if (total > 0) (done.toFloat() / total).coerceIn(0f, 1f) else 0f
 }
@@ -107,8 +109,8 @@ class Downloads(private val context: Context) {
 
     val activeCount get() = _items.value.count { it.status == DlStatus.Running || it.status == DlStatus.Merging || it.status == DlStatus.Queued }
 
-    fun enqueue(video: Video, audioOnly: Boolean, quality: Int) {
-        _items.update { listOf(DownloadItem(video = video, audioOnly = audioOnly, quality = quality)) + it }
+    fun enqueue(video: Video, audioOnly: Boolean, quality: Int, smart: Boolean = false) {
+        _items.update { listOf(DownloadItem(video = video, audioOnly = audioOnly, quality = quality, smart = smart)) + it }
         save()
         schedule()
     }
