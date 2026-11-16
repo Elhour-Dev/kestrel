@@ -42,7 +42,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val fromRecents = intent.flags and android.content.Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
-        if (savedInstanceState == null && !fromRecents) Ui.pendingIntent = intent
+        // Links from other apps arrive through LinkActivity. Only our own actions (notification taps) come here;
+        // a link here is an old one Android replays after the app was stopped.
+        if (savedInstanceState == null && !fromRecents && intent.action in setOf(ACTION_OPEN_PLAYER, ACTION_OPEN_DOWNLOADS)) Ui.pendingIntent = intent
         setContent {
             val theme by Graph.settings.theme.flow.collectAsStateWithLifecycle()
             KestrelTheme(theme) {
@@ -61,7 +63,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        Ui.pendingIntent = intent
+        // LinkActivity already handed over its link; its plain "open the app" intent must not replace it.
+        if (intent.action != Intent.ACTION_MAIN) Ui.pendingIntent = intent
         // Debug builds only: `am start ... --ez force_web true` tests YouTube's web player.
         if (BuildConfig.DEBUG && intent.getBooleanExtra("force_web", false)) {
             dev.kestrel.app.data.streams.Streams.blockedUntil = System.currentTimeMillis() + 10 * 60_000L
