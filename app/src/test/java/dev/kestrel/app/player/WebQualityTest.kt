@@ -8,7 +8,7 @@ class WebQualityTest {
     private val levels = listOf("hd1080", "hd720", "large", "medium", "small", "tiny", "auto")
 
     @Test fun picksLevel() {
-        assertEquals("hd1080", WebHost.pickLevel(levels, 0))
+        assertNull(WebHost.pickLevel(levels, 0))
         assertEquals("hd720", WebHost.pickLevel(levels, 720))
         assertEquals("hd1080", WebHost.pickLevel(levels, 2160))
         assertEquals("large", WebHost.pickLevel(levels, 600))

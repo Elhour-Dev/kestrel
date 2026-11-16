@@ -73,17 +73,22 @@ object WebHost {
     }
     if (window.kestrelInAd) { window.kestrelInAd = false; v.playbackRate = 1; }
     // Quality: report the levels YouTube offers and apply the one the app wants.
-    var mp = document.getElementById('movie_player');
-    if (mp && mp.getAvailableQualityLevels) {
-      var lv = (mp.getAvailableQualityLevels() || []).join(',');
-      var cur = (mp.getPlaybackQuality && mp.getPlaybackQuality()) || '';
-      if (lv !== window.kestrelLv || cur !== window.kestrelCur) { window.kestrelLv = lv; window.kestrelCur = cur; KWeb.quality(lv, cur); }
-      var w = KWeb.wanted();
-      if (w && lv && w !== window.kestrelQDone && mp.setPlaybackQualityRange) {
-        window.kestrelQDone = w;
-        try { mp.setPlaybackQualityRange(w, w); mp.setPlaybackQuality && mp.setPlaybackQuality(w); } catch(e){}
+    // Re-applied if YouTube drifts off it (ads, network), at most 3 tries per request, 4 s apart.
+    try {
+      var mp = document.getElementById('movie_player');
+      if (mp && mp.getAvailableQualityLevels) {
+        var lv = (mp.getAvailableQualityLevels() || []).join(',');
+        var cur = (mp.getPlaybackQuality && mp.getPlaybackQuality()) || '';
+        if (lv !== window.kestrelLv || cur !== window.kestrelCur) { window.kestrelLv = lv; window.kestrelCur = cur; KWeb.quality(lv, cur); }
+        var want = String(KWeb.wanted()).split('|'), w = want[0];
+        if (want[1] !== window.kestrelQReq) { window.kestrelQReq = want[1]; window.kestrelQTries = 0; window.kestrelQAt = 0; if (!w && window.kestrelQSet && mp.setPlaybackQualityRange) { window.kestrelQSet = false; mp.setPlaybackQualityRange('auto', 'auto'); } }
+        if (cur === w) window.kestrelQTries = 0;
+        if (w && lv && cur !== w && mp.setPlaybackQualityRange && window.kestrelQTries < 3 && !(Date.now() - (window.kestrelQAt || 0) < 4000)) {
+          window.kestrelQTries++; window.kestrelQAt = Date.now(); window.kestrelQSet = true;
+          mp.setPlaybackQualityRange(w, w); mp.setPlaybackQuality && mp.setPlaybackQuality(w);
+        }
       }
-    }
+    } catch(e) {}
     if (!v.kestrelHooked) {
       v.kestrelHooked = true;
       v.addEventListener('ended', function(){ if (!document.querySelector('.ad-showing,.ad-interrupting')) KWeb.ended(); });
@@ -123,8 +128,11 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
     private val _quality = kotlinx.coroutines.flow.MutableStateFlow(Quality())
     val quality: kotlinx.coroutines.flow.StateFlow<Quality> = _quality
 
-    /** Height the app wants (0 = best). The page asks for it every half second and applies it once per change. */
+    /** Height the app wants (0 = let YouTube choose). The page asks for it every half second. */
     @Volatile var wantHeight = 0
+        set(value) { field = value; wantRequest++ }
+    /** Bumped on every request, so picking the same level again retries it. */
+    @Volatile private var wantRequest = 0
 
     private val LEVELS = mapOf(
         "highres" to 4320, "hd2880" to 2880, "hd2160" to 2160, "hd1440" to 1440, "hd1080" to 1080,
@@ -132,11 +140,10 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
     )
     @Volatile private var levels: List<String> = emptyList()
 
-    /** YouTube level for [wantHeight]: the highest one not above it, else the lowest. */
+    /** YouTube level for [wantHeight]: the highest one not above it, else the lowest. Null = auto. */
     internal fun pickLevel(available: List<String>, want: Int): String? {
         val known = available.filter { it in LEVELS }.sortedByDescending { LEVELS[it] }
-        if (known.isEmpty()) return null
-        if (want <= 0) return known.first()
+        if (known.isEmpty() || want <= 0) return null
         return known.firstOrNull { LEVELS.getValue(it) <= want } ?: known.last()
     }
 
@@ -212,7 +219,7 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
                     android.util.Log.i("Kestrel", "web quality: levels=$lv current=$cur")
                 }
                 @JavascriptInterface
-                fun wanted(): String = pickLevel(levels, wantHeight) ?: ""
+                fun wanted(): String = (pickLevel(levels, wantHeight) ?: "") + "|" + wantRequest
                 @JavascriptInterface
                 fun error() {
                     main.post { onError?.invoke() }

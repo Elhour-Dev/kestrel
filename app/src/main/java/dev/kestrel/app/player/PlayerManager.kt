@@ -552,7 +552,9 @@ object PlayerManager {
         val res = runCatching { withNetTimeout { Streams.fromNewPipe(NpRepo.stream(video.id)) } }
         res.exceptionOrNull()?.let { e ->
             // Unplayable, or YouTube can't be reached at all (the web page would just stay blank): show the error.
-            val offline = generateSequence(e) { it.cause }.any { it is java.io.IOException }
+            // If the page already plays the video, a slow details lookup isn't a reason to stop it.
+            val offline = generateSequence(e) { it.cause }.any { it is java.io.IOException } &&
+                !(WebHost.videoId == video.id && WebHost.durationMs > 0)
             if ((unplayable(e) || offline) && _now.value?.video?.id == video.id) {
                 WebHost.release()
                 _now.update { it?.copy(web = false, loading = false, error = dev.kestrel.app.ui.friendlyError(e)) }

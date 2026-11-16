@@ -346,8 +346,9 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
     }
 
     if (showQuality && (np.web || r != null)) {
-        val heights = if (np.web) webQ.heights else r!!.qualities()
-        val selected = if (np.web) webQ.current else r!!.pickVideo(np.quality)?.height
+        // Web player: "Auto" (0) lets YouTube adapt to the network.
+        val heights = if (np.web) listOf(0) + webQ.heights else r!!.qualities()
+        val selected = if (np.web) (if (np.quality <= 0) 0 else webQ.current) else r!!.pickVideo(np.quality)?.height
         AlertDialog(
             onDismissRequest = { showQuality = false },
             title = { Text("Quality") },
@@ -356,7 +357,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
                     items(heights) { h ->
                         Row(Modifier.fillMaxWidth().clickable { PlayerManager.setQuality(h); showQuality = false }, verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected == h, { PlayerManager.setQuality(h); showQuality = false })
-                            Text("${h}p")
+                            Text(if (h <= 0) "Auto" + (webQ.current.takeIf { it > 0 }?.let { " (${it}p)" } ?: "") else "${h}p")
                         }
                     }
                 }
