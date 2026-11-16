@@ -51,6 +51,7 @@ fun LiveChatSheet(firstToken: String, onDismiss: () -> Unit) {
     var messages by remember { mutableStateOf<List<InnerTube.ChatMsg>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
     var sendParams by remember { mutableStateOf<String?>(null) }
+    var notice by remember { mutableStateOf<String?>(null) }
     var draft by remember { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     val list = rememberLazyListState()
@@ -61,7 +62,9 @@ fun LiveChatSheet(firstToken: String, onDismiss: () -> Unit) {
             try {
                 val page = Graph.innerTube.liveChat(token)
                 error = null
-                sendParams = page.sendParams
+                // Only the first reply has the send box; later polls leave it out.
+                page.sendParams?.let { sendParams = it }
+                page.notice?.let { notice = it }
                 if (page.items.isNotEmpty()) {
                     val have = messages.map { it.id }.toHashSet()
                     // Keep the newest 300.
@@ -104,7 +107,7 @@ fun LiveChatSheet(firstToken: String, onDismiss: () -> Unit) {
             if (error != null && messages.isNotEmpty()) Text(error!!, Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall)
             val params = sendParams
-            if (params == null) Text(if (Graph.account.isSignedIn) "You can't chat in this stream." else "Sign in to chat.",
+            if (params == null) Text(notice ?: if (Graph.account.isSignedIn) "You can't chat in this stream." else "Sign in to chat.",
                 Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             else Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(draft, { draft = it.take(200) }, Modifier.weight(1f), placeholder = { Text("Chat…") }, singleLine = true)

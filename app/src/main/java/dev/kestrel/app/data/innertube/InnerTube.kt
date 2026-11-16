@@ -239,7 +239,8 @@ class InnerTube(private val account: AccountStore) {
     data class ChatMsg(val id: String, val author: String, val avatar: String?, val text: String)
 
     /** One poll of the live chat: new messages, the next token, how long to wait, and (signed in) what sending needs. */
-    data class ChatPage(val items: List<ChatMsg>, val next: String?, val waitMs: Long, val sendParams: String?)
+    /** [notice]: YouTube's reason you can't write (members only, slow mode off, needs a channel…). */
+    data class ChatPage(val items: List<ChatMsg>, val next: String?, val waitMs: Long, val sendParams: String?, val notice: String? = null)
 
     suspend fun liveChat(token: String): ChatPage {
         val signedIn = account.session.value != null
@@ -249,13 +250,21 @@ class InnerTube(private val account: AccountStore) {
             val m = a.at("addChatItemAction.item.liveChatTextMessageRenderer") ?: return@mapNotNull null
             ChatMsg(m.str("id") ?: return@mapNotNull null, m.obj("authorName").text().orEmpty(), m.obj("authorPhoto").thumb(),
                 m.obj("message").arr("runs").orEmpty().joinToString("") { run ->
-                    run.str("text") ?: run.obj("emoji")?.arr("shortcuts")?.firstOrNull()?.let { (it as? JsonPrimitive)?.content }.orEmpty()
+                    // Normal emoji: emojiId is the emoji itself. Channel emoji: show its :shortcut:.
+                    run.str("text") ?: run.obj("emoji")?.let { e ->
+                        if (e.bool("isCustomEmoji") != true) e.str("emojiId")
+                        else e.arr("shortcuts")?.firstOrNull()?.let { (it as? JsonPrimitive)?.content }
+                    }.orEmpty()
                 })
         }
         val c = lcc.arr("continuations")?.firstOrNull()
         val cd = c.obj("invalidationContinuationData") ?: c.obj("timedContinuationData") ?: c.obj("reloadContinuationData")
         return ChatPage(items, cd.str("continuation"), cd.str("timeoutMs")?.toLongOrNull() ?: 5_000,
-            if (signedIn) lcc.findAll("sendLiveChatMessageEndpoint").firstOrNull()?.str("params") else null)
+            if (signedIn) lcc.findAll("sendLiveChatMessageEndpoint").firstOrNull()?.str("params") else null,
+            lcc.obj("actionPanel")?.let { p ->
+                (p.findAll("liveChatRestrictedParticipationRenderer").firstOrNull() ?: p.findAll("liveChatMessageInputRenderer").firstOrNull())
+                    ?.obj("message")?.text()
+            })
     }
 
     /** Posts [text] to the live chat (public, as the signed-in account). */
