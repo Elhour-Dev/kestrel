@@ -70,9 +70,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val followSensor = Runnable { if (!Ui.fullscreen) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED }
+
     fun setFullscreen(on: Boolean) {
         Ui.fullscreen = on
-        requestedOrientation = if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        window.decorView.removeCallbacks(followSensor)
+        if (on) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        } else {
+            // Back to portrait first (a phone lying flat would otherwise stay landscape = fullscreen),
+            // then follow the sensor again so turning the phone still works.
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            window.decorView.postDelayed(followSensor, 2000)
+        }
         applySystemBars()
     }
 
