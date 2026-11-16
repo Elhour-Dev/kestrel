@@ -73,12 +73,12 @@ import kotlinx.coroutines.launch
 import org.schabi.newpipe.extractor.channel.tabs.ChannelTabs
 
 /** Subscribes locally, and on the Google account when signed in. */
-fun toggleSubscribe(c: Channel, scope: CoroutineScope, nav: AppNav) {
+fun toggleSubscribe(c: Channel, scope: CoroutineScope, nav: AppNav, params: String? = null) {
     val on = !Graph.store.isSubscribed(c.id)
     if (on) Graph.store.subscribe(c) else Graph.store.unsubscribe(c.id)
     if (Graph.account.isSignedIn) {
         scope.launch {
-            runCatching { Graph.innerTube.subscribe(c.id, on) }.onFailure {
+            runCatching { Graph.innerTube.subscribe(c.id, on, params) }.onFailure {
                 nav.message("Saved on this phone, but Google sync failed: ${friendlyError(it)}")
             }
         }
@@ -87,13 +87,13 @@ fun toggleSubscribe(c: Channel, scope: CoroutineScope, nav: AppNav) {
 }
 
 @Composable
-fun SubscribeButton(c: Channel) {
+fun SubscribeButton(c: Channel, params: String? = null) {
     val nav = LocalNav.current
     val scope = rememberCoroutineScope()
     val lib by Graph.store.library.collectAsStateWithLifecycle()
     val subscribed = lib.subscriptions.any { it.id == c.id }
-    if (subscribed) OutlinedButton(onClick = { toggleSubscribe(c, scope, nav) }) { Text("Subscribed") }
-    else Button(onClick = { toggleSubscribe(c, scope, nav) }) { Text("Subscribe") }
+    if (subscribed) OutlinedButton(onClick = { toggleSubscribe(c, scope, nav, params) }) { Text("Subscribed") }
+    else Button(onClick = { toggleSubscribe(c, scope, nav, params) }) { Text("Subscribe") }
 }
 
 private val tabOrder = listOf(ChannelTabs.VIDEOS to "Videos", ChannelTabs.SHORTS to "Shorts", ChannelTabs.LIVESTREAMS to "Live", ChannelTabs.PLAYLISTS to "Playlists")

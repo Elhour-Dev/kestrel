@@ -125,7 +125,11 @@ class InnerTube(private val account: AccountStore) {
                 if (auth && (resp.code == 401 || resp.code == 403)) {
                     account.markExpired(); throw SessionExpiredException()
                 }
-                if (!resp.isSuccessful) error("YouTube returned HTTP ${resp.code} for $endpoint")
+                if (!resp.isSuccessful) {
+                    // YouTube's own reason (e.g. "Request contains an invalid argument."), when it sends one.
+                    val why = runCatching { (json.parseToJsonElement(text) as JsonObject).at("error.message")?.let { (it as JsonPrimitive).content } }.getOrNull()
+                    error("YouTube returned HTTP ${resp.code} for $endpoint" + (why?.let { ": $it" } ?: ""))
+                }
                 val obj = json.parseToJsonElement(text) as JsonObject
                 if (auth && obj.at("responseContext.mainAppWebResponseContext.loggedOut")?.let { (it as? JsonPrimitive)?.content } == "true") {
                     account.markExpired()
@@ -203,12 +207,12 @@ class InnerTube(private val account: AccountStore) {
 
     // ---------------- video state & actions ----------------
 
-    /** One choice of the channel bell ("All", "Personalized", "None"); [params] goes back to YouTube as is. */
-    data class NotifyOption(val label: String, val params: String, val apiUrl: String, val selected: Boolean)
-
     /** What the watch page shows around the player. Loads fast, without waiting for the stream links. */
     data class WatchInfo(
         val title: String,
+        /** As YouTube writes them ("1,234,567 views", "Mar 14, 2026"). */
+        val views: String,
+        val date: String,
         val channelName: String,
         val channelId: String?,
         val channelAvatar: String?,
@@ -219,7 +223,8 @@ class InnerTube(private val account: AccountStore) {
         val collaborators: List<Channel>,
         val like: String?,
         val subscribed: Boolean?,
-        val notify: List<NotifyOption>,
+        /** What YouTube's own Subscribe button sends along (null when not found). */
+        val subscribeParams: String?,
         val related: List<Item>,
     )
 
@@ -243,9 +248,11 @@ class InnerTube(private val account: AccountStore) {
         val secondary = r.at("contents.twoColumnWatchNextResults.secondaryResults")
         return WatchInfo(
             title = primary.obj("title").text().orEmpty(),
+            views = primary.at("viewCount.videoViewCountRenderer").let { it.obj("shortViewCount").text() ?: it.obj("viewCount").text() }.orEmpty(),
+            date = primary.obj("dateText").text().orEmpty(),
             channelName = owner.obj("title").text().orEmpty(),
             channelId = owner.obj("title").findFirstStr("browseId") ?: collaborators.firstOrNull()?.id ?: owner.findFirstStr("browseId"),
-            channelAvatar = owner.obj("thumbnail").thumb(),
+            channelAvatar = owner.obj("thumbnail").thumb() ?: collaborators.firstOrNull()?.avatar,
             subscribers = owner.obj("subscriberCountText").text().orEmpty().removeSuffix(" subscribers").trim(),
             // The like count is the first button title with a digit (signed in, the layout differs a little).
             likes = r.findAll("likeButtonViewModel").firstOrNull()
@@ -254,40 +261,10 @@ class InnerTube(private val account: AccountStore) {
             collaborators = if (collaborators.size > 1) collaborators else emptyList(),
             like = like,
             subscribed = sub,
-            notify = notifyOptions(r),
+            subscribeParams = r.findAll("subscribeEndpoint").firstOrNull()?.str("params")
+                ?.let { runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it) },
             related = if (secondary != null) Parser.items(secondary) else emptyList(),
         )
-    }
-
-    /** Bell choices: every modifyChannelNotificationPreferenceEndpoint with the label of the item holding it. */
-    private fun notifyOptions(root: JsonElement): List<NotifyOption> {
-        val out = mutableListOf<NotifyOption>()
-        fun walk(e: JsonElement, parents: List<JsonObject>) {
-            when (e) {
-                is JsonObject -> {
-                    val ep = e.obj("modifyChannelNotificationPreferenceEndpoint")
-                    val params = ep?.str("params")
-                    if (params != null) {
-                        val chain = (parents + e).asReversed()
-                        val label = chain.firstNotNullOfOrNull { it.obj("title").text() ?: it.obj("text").text() }.orEmpty()
-                        val selected = chain.firstNotNullOfOrNull { it.bool("isSelected") } ?: false
-                        val api = e.at("commandMetadata.webCommandMetadata").str("apiUrl")
-                            ?: "/youtubei/v1/notification/modify_channel_preference"
-                        if (label.isNotBlank()) out += NotifyOption(label, params, api, selected)
-                    }
-                    val next = parents + e
-                    e.values.forEach { walk(it, next) }
-                }
-                is JsonArray -> e.forEach { walk(it, parents) }
-                else -> {}
-            }
-        }
-        walk(root, emptyList())
-        return out.distinctBy { it.label }
-    }
-
-    suspend fun setNotifications(option: NotifyOption) {
-        post(option.apiUrl.substringAfter("/youtubei/v1/"), buildJsonObject { put("params", option.params) })
     }
 
     /** status: "like", "dislike" or "removelike". */
@@ -295,9 +272,11 @@ class InnerTube(private val account: AccountStore) {
         post("like/$status", buildJsonObject { putJsonObject("target") { put("videoId", videoId) } })
     }
 
-    suspend fun subscribe(channelId: String, on: Boolean) {
+    /** [params]: what YouTube's own button sends for this channel (from the watch page), when known. */
+    suspend fun subscribe(channelId: String, on: Boolean, params: String? = null) {
         post(if (on) "subscription/subscribe" else "subscription/unsubscribe", buildJsonObject {
             putJsonArray("channelIds") { add(JsonPrimitive(channelId)) }
+            if (on && params != null) put("params", params)
         })
     }
 

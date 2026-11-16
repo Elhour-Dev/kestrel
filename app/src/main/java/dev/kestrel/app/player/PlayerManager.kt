@@ -374,7 +374,7 @@ object PlayerManager {
             val info = runCatching { Graph.innerTube.watchInfo(video.id) }
                 .onFailure { if (it !is kotlinx.coroutines.CancellationException) android.util.Log.w("Kestrel", "watch info failed: ${it.message}") }
                 .getOrNull() ?: return@launch
-            android.util.Log.i("Kestrel", "watch info: likes=${info.likes.isNotBlank()} desc=${info.description.isNotBlank()} collabs=${info.collaborators.size} bell=${info.notify.map { it.label + if (it.selected) "*" else "" }}")
+            android.util.Log.i("Kestrel", "watch info: likes=${info.likes.isNotBlank()} desc=${info.description.isNotBlank()} collabs=${info.collaborators.size} subscribed=${info.subscribed}")
             _now.update { np ->
                 if (np?.video?.id != video.id) return@update np
                 val v = np.video

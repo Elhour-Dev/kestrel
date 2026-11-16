@@ -1,11 +1,5 @@
 package dev.kestrel.app.ui.screens
 
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.NotificationsActive
-import androidx.compose.material.icons.filled.NotificationsOff
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.IconButton
 import android.content.Intent
 import android.content.res.Configuration
 import android.net.Uri
@@ -260,8 +254,8 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
                 Text(v.title.ifBlank { if (np.error != null) "Video unavailable" else "Loading…" }, style = MaterialTheme.typography.titleMedium, maxLines = if (expanded) 10 else 2, overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.clickable { expanded = !expanded })
                 val meta = listOfNotNull(
-                    v.views.takeIf { it >= 0 }?.let { "${formatCount(it)} views" },
-                    r?.uploadDate ?: v.uploaded,
+                    v.views.takeIf { it >= 0 }?.let { "${formatCount(it)} views" } ?: np.info?.views?.ifBlank { null },
+                    r?.uploadDate ?: v.uploaded ?: np.info?.date?.ifBlank { null },
                     if (np.segments.isNotEmpty()) "${np.segments.size} SponsorBlock segments" else null,
                 ).joinToString(" • ")
                 if (meta.isNotBlank()) Text(meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -313,8 +307,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
                     else subs?.let { Text("$it subscribers", style = MaterialTheme.typography.bodySmall) }
                 }
                 if (collabs.isEmpty()) v.channelId?.let { cid ->
-                    SubscribeButton(Channel(cid, v.channelName, avatar))
-                    if (info != null && info.channelId == cid) BellButton(cid, info.notify, v.id)
+                    SubscribeButton(Channel(cid, v.channelName, avatar), info?.subscribeParams?.takeIf { info.channelId == cid })
                 }
             }
         }
@@ -398,51 +391,4 @@ private fun CollaboratorsDialog(channels: List<Channel>, onDismiss: () -> Unit) 
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
     )
-}
-
-/** The channel bell (All / Personalized / None). Shown when signed in and subscribed. */
-@Composable
-private fun BellButton(channelId: String, initial: List<dev.kestrel.app.data.innertube.InnerTube.NotifyOption>, videoId: String) {
-    if (!Graph.account.isSignedIn) return
-    val nav = LocalNav.current
-    val scope = rememberCoroutineScope()
-    val lib by Graph.store.library.collectAsStateWithLifecycle()
-    val subscribed = lib.subscriptions.any { it.id == channelId }
-    var options by remember(channelId, initial) { mutableStateOf(initial) }
-    var open by remember { mutableStateOf(false) }
-    // YouTube only sends the bell choices for channels you follow: fetch them again after subscribing.
-    LaunchedEffect(subscribed) {
-        if (subscribed && options.isEmpty()) {
-            kotlinx.coroutines.delay(1500)
-            runCatching { Graph.innerTube.watchInfo(videoId) }.getOrNull()?.takeIf { it.channelId == channelId }?.let { options = it.notify }
-        }
-    }
-    if (!subscribed || options.isEmpty()) return
-    val current = options.firstOrNull { it.selected }?.label.orEmpty()
-    val icon = when {
-        current.startsWith("All", true) -> Icons.Default.NotificationsActive
-        current.startsWith("None", true) -> Icons.Default.NotificationsOff
-        else -> Icons.Default.Notifications
-    }
-    Box {
-        IconButton(onClick = { open = true }) { Icon(icon, "Notifications: ${current.ifBlank { "choose" }}") }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            options.forEach { o ->
-                DropdownMenuItem(
-                    text = { Text(o.label) },
-                    leadingIcon = { RadioButton(o.selected, null) },
-                    onClick = {
-                        open = false
-                        val old = options
-                        options = options.map { it.copy(selected = it.label == o.label) }
-                        scope.launch {
-                            runCatching { Graph.innerTube.setNotifications(o) }
-                                .onSuccess { nav.message("Notifications: ${o.label}") }
-                                .onFailure { options = old; nav.message(friendlyError(it)) }
-                        }
-                    },
-                )
-            }
-        }
-    }
 }
