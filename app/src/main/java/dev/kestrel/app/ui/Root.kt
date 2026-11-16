@@ -119,7 +119,6 @@ fun KestrelRoot(activity: MainActivity) {
             snackbarHost = { SnackbarHost(snackbar) },
             bottomBar = {
                 if (!fullscreenPlayer) Column {
-                    if (showMini) MiniPlayer { nav.navigate("player") { launchSingleTop = true } }
                     if (showChrome) BottomBar(route) { r ->
                         nav.navigate(r) {
                             popUpTo("home") { saveState = true }
@@ -133,7 +132,8 @@ fun KestrelRoot(activity: MainActivity) {
         ) { pad ->
             Column(Modifier.fillMaxSize().padding(if (fullscreenPlayer) androidx.compose.foundation.layout.PaddingValues(0.dp) else pad)) {
                 if (!fullscreenPlayer && route != "startup" && route != "login") SessionBanner(appNav)
-                NavHost(nav, startDestination = "startup", modifier = Modifier.weight(1f)) {
+                Box(Modifier.weight(1f)) {
+                NavHost(nav, startDestination = "startup", modifier = Modifier.fillMaxSize()) {
                     composable("startup") { StartupScreen { next -> nav.navigate(next) { popUpTo("startup") { inclusive = true } } } }
                     composable("onboarding") { OnboardingScreen { nav.navigate("home") { popUpTo("onboarding") { inclusive = true } } } }
                     composable("login") { LoginScreen() }
@@ -154,6 +154,8 @@ fun KestrelRoot(activity: MainActivity) {
                     composable("help") { HelpScreen() }
                     composable("subchannels") { SubscribedChannelsScreen() }
                     composable("playlists") { PlaylistsScreen() }
+                }
+                if (showMini && !fullscreenPlayer) MiniPlayer(Modifier.align(Alignment.BottomEnd).padding(12.dp)) { nav.navigate("player") { launchSingleTop = true } }
                 }
             }
         }
@@ -235,43 +237,6 @@ private fun SessionBanner(nav: AppNav) {
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Your Google session expired.", Modifier.weight(1f), color = MaterialTheme.colorScheme.onErrorContainer, style = MaterialTheme.typography.bodyMedium)
                 TextButton(onClick = { nav.go("login") }) { Text("Sign in again") }
-            }
-        }
-    }
-}
-
-@UnstableApi
-@Composable
-private fun MiniPlayer(onOpen: () -> Unit) {
-    val now by PlayerManager.now.collectAsStateWithLifecycle()
-    val np = now ?: return
-    var playing by remember { mutableStateOf(PlayerManager.isPlaying()) }
-    var progress by remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(np.video.id) {
-        while (true) {
-            playing = PlayerManager.isPlayingOrWill()
-            val d = PlayerManager.durationMs()
-            progress = if (d > 0) PlayerManager.positionMs() / d.toFloat() else 0f
-            kotlinx.coroutines.delay(500)
-        }
-    }
-    Surface(tonalElevation = 3.dp, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
-        Column {
-            LinearProgressIndicator(progress = { progress }, Modifier.fillMaxWidth().height(2.dp))
-            Row(Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(96.dp).height(54.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant)) {
-                    AsyncImage(np.video.thumbnail, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
-                }
-                Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                    Text(np.video.title.ifBlank { if (np.error != null) "Video unavailable" else "Loading…" }, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                    Text(np.error ?: np.video.channelName, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall,
-                        color = if (np.error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                IconButton(onClick = {
-                    PlayerManager.toggle()
-                    playing = !playing
-                }) { Icon(if (playing) Icons.Default.Pause else Icons.Default.PlayArrow, "Play/pause") }
-                IconButton(onClick = { PlayerManager.stop() }) { Icon(Icons.Default.Close, "Close") }
             }
         }
     }
