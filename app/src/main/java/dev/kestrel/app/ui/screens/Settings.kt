@@ -374,7 +374,7 @@ fun HelpScreen() {
         "How do I use the popup player?" to "On a video, tap Popup. The first time, allow \"Display over other apps\". Drag the window to move it, pinch to resize, tap it for controls.",
         "Picture-in-picture" to "Press Home while a video plays, or tap PiP on the video page.",
         "Player gestures" to "Double-tap the left or right side to jump 10 seconds. Swipe up/down on the left for brightness, on the right for volume.",
-        "Where are my downloads?" to "In Library > Downloads (they play offline) and in your phone's Downloads/Plover folder, unless you picked another folder.",
+        "Where are my downloads?" to "In You > Downloads (they play offline) and in your phone's Downloads/Plover folder (Downloads/Kestrel for older ones), unless you picked another folder.",
         "Is signing in safe?" to "You sign in on Google's own page. Plover keeps the session cookies encrypted on this phone only and never sends them anywhere except YouTube.",
         "\"Your session expired\"" to "Google ended the login. Tap \"Sign in again\". Your local data is kept.",
         "Something stopped working" to "YouTube changes often. Plover tries to fix itself at startup and checks for a fixed version. See Settings > System status. Updates arrive automatically.",

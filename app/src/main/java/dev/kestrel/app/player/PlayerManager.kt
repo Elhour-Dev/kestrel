@@ -332,7 +332,7 @@ object PlayerManager {
         player.stop()
         player.clearMediaItems()
         loadInfo(video)
-        if (Streams.linksBlocked()) {
+        if (dev.kestrel.app.BuildConfig.FORCE_WEB || Streams.linksBlocked()) {
             // This network blocks our links: go straight to the web player, fetch details on the side.
             startWeb(video, resumeSec(video))
             loadJob = scope.launch { webDetails(video) }

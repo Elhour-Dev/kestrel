@@ -31,6 +31,8 @@ android {
         versionCode = appVersionCode
         versionName = "1.$appVersionCode"
         buildConfigField("String", "GITHUB_REPO", "\"Elhour-Dev/kestrel\"")
+        // Test only: -PforceWeb=true always uses the web player (to test web mode on a network where links work).
+        buildConfigField("boolean", "FORCE_WEB", (project.findProperty("forceWeb") == "true").toString())
     }
 
     signingConfigs {
