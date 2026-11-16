@@ -16,6 +16,20 @@ Repo: github.com/Elhour-Dev/kestrel (private for now; must be public for in-app 
 Plan file: ~/.claude/plans/pasted-content-id-915c-first-use-cheeky-hellman.md. Dark only. Keep applicationId dev.kestrel.app.
 Install test builds with -PversionCode=258+ and adb install -r (never uninstall / pm clear).
 
+### Reference: YouTube Android app on the phone (2026-11-16)
+- Top bar: logo left; bell (red count badge) + search right. Under it text tabs: Home | Subs | Music | Live | More (underline on active). More = list: Movies & TV, Charts, Gaming, ...
+- Bottom bar: icons only, no labels: Home, Shorts, Create (+), You (account avatar).
+- Feed card: full-bleed 16:9 thumbnail, duration pill bottom-right; under it avatar + 2-line title + "channel  ▷1.2M  5y ago" + "•••". Skeleton placeholders while loading.
+- Watch page: 1-line title (fades out), "@handle  88K likes  1.2M views  5y ago  more"; row: channel avatar, subscribe/bell pill, then icon-only Like, Dislike, Share, Ask(AI), •••; Comments card "Comments 2.9K" with a carousel; then related feed.
+- Player controls: top: chevron (minimize), autoplay toggle pill (center), cast, CC, gear. Middle: prev / play-pause / next in dim circles. Bottom-left time pill "1:28 / 12:57", bottom-right fullscreen; red progress bar with dot on the bottom edge.
+- Gear sheet: Quality "Auto (144p)", Playback speed, Captions, Lock screen, On-the-go, More -> Loop video, Ambient mode, Stable volume, Sleep timer, Watch in VR, Help.
+- Quality sheet: Auto (recommended) / Higher picture quality / Data saver / Advanced (specific resolution).
+- Mini player: floating 16:9 card bottom-right with play + close over it, above the bottom bar.
+- You tab: Accounts chip, bell, search, settings; avatar + name + @handle; "View channel" button; History row (horizontal cards); Library chips (Recents, Downloaded, Playlists, Music) + playlist rows (Liked videos, Watch later, ...).
+- Notifications: "Important" + "Today" sections, rows with avatar, text, time, thumbnail, •••.
+- Shorts: full-screen; top right search + •••; right column: like(heart)+count, comments+count, Save, Share, Ask, Remix, sound disc; bottom: avatar @handle + Subscribe pill, title.
+- Search: back, field, voice; suggestion rows with a fill-in arrow.
+
 ## Findings
 - NewPipeExtractor v0.27.1 works (Nov 2026). Stream URLs use client `c=VISIONOS`;
   plain GET + Range or `&range=` param both work. Live videos: use `hlsUrl`.
