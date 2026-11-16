@@ -92,6 +92,7 @@ dependencies {
     coreLibraryDesugaring(libs.desugar)
     implementation(libs.newpipe.extractor)
     implementation(libs.work.runtime)
+    implementation(libs.media3.transformer)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

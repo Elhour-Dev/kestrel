@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -180,6 +181,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
     val webQ by dev.kestrel.app.player.WebHost.quality.collectAsStateWithLifecycle()
     var showComments by remember { mutableStateOf(false) }
     var showChat by remember { mutableStateOf(false) }
+    var showClip by remember { mutableStateOf(false) }
     var saveFor by remember { mutableStateOf<Video?>(null) }
     var downloadFor by remember { mutableStateOf<Video?>(null) }
     var expanded by remember(v.id) { mutableStateOf(false) }
@@ -267,6 +269,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
                 } else if (r != null && !r.isLive && np.localPath == null && !np.web) item {
                     Pill(Icons.Default.HighQuality, r.pickVideo(np.quality)?.label ?: "Quality") { showQuality = true }
                 }
+                if (np.localPath != null) item { Pill(Icons.Default.ContentCut, "Clip") { showClip = true } }
                 item { Pill(Icons.Default.PictureInPicture, "PiP") { activity.enterPip() } }
             }
         }
@@ -345,6 +348,9 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
     }
     if (showComments) CommentsSheet(v.id) { showComments = false }
     np.info?.chat?.let { chat -> if (showChat) LiveChatSheet(chat) { showChat = false } }
+    np.localPath?.let { path ->
+        if (showClip) ClipDialog(path, v.title, PlayerManager.positionMs(), PlayerManager.durationMs()) { showClip = false }
+    }
     if (showCollabs) CollaboratorsDialog(info?.collaborators.orEmpty()) { showCollabs = false }
     saveFor?.let { SaveToPlaylistDialog(it) { saveFor = null } }
     downloadFor?.let { DownloadDialog(it) { downloadFor = null } }
