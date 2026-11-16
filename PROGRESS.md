@@ -15,6 +15,14 @@ Repo: github.com/Elhour-Dev/kestrel (private for now; must be public for in-app 
 ## UI redesign "Plover" (plan approved 2026-11-16) — branch ui-redesign
 Plan file: ~/.claude/plans/pasted-content-id-915c-first-use-cheeky-hellman.md. Dark only. Keep applicationId dev.kestrel.app.
 Install test builds with -PversionCode=258+ and adb install -r (never uninstall / pm clear).
+Web-mode testing: build with -PforceWeb=true (never ship that build).
+
+Done on ui-redesign (all phone-checked): 0be1b5b name/icon/dark theme, 4ab16f6 shell (top tabs, icon bottom bar),
+6e714fc cards/feeds/Shorts shelf, b669ac3 forceWeb switch.
+Next: player in 4 commits (Compose overlay on PlayerView useController=false + webPlayer; gear sheet with
+quality/speed/captions/audio track/audio only/popup/PiP/sleep/loop; gestures ported into overlay pointerInput;
+watch-page restyle). Test each in direct, web, local file, live, PiP, fullscreen.
+Not yet phone-tested: 46ed38c drift retry (hard to force).
 
 ### Reference: YouTube Android app on the phone (2026-11-16)
 - Top bar: logo left; bell (red count badge) + search right. Under it text tabs: Home | Subs | Music | Live | More (underline on active). More = list: Movies & TV, Charts, Gaming, ...
