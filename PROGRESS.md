@@ -101,3 +101,9 @@ Then: commit, push, final report (root cause, techniques, fixes, tests, what's l
 - Network 2026-11-16 ~15:05+: phone VPN slow (1.5 s per TCP connect, links 16-29 s, earlier 4.8 s). Phone v2rayNG uses "vpnizer Auto"
   (same VPS as the PC); its "Tokyo-Trojan/VLESS" profiles point at an old IP and fail (-1 ms). PC uses Tokyo-Hy2. Not changed (ask user).
 - Account side effects of tests: test videos went into watch history; Kowski and KSI subscriptions from subscribe tests may need removing.
+- Later 2026-11-16 (builds 249-255): checker review fixed: signed-in private/members-only no longer cut off by NewPipe's error;
+  web controls Activity leak; collab dialog per video. Cancelled backup clients now stop. Links with t=/start= start there (LinkStartTest).
+  Phone (debug app via PC's Tokyo-Hy2 over adb reverse): t=60 and t=98 start right; SponsorBlock skipped 1:46-3:02 natively.
+  Slowness root cause: China -> VPS link today (VPS -> YouTube 0.05 s; NewPipe getInfo 11-14 s from both phone and PC).
+- Not done / limits: update prompt not shown in link-opened sessions; ad baseline not possible (YouTube served no ad data to this
+  network signed out); web overlay takes all taps (in-page prompts like a content warning can't be tapped).
