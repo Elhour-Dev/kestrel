@@ -35,8 +35,15 @@ Done since (all phone-checked): a568bfc floating mini player, efc8a95 Shorts ove
 filters, big cards; fixed 401 on no-account InnerTube calls), 3ca7f15+4608f5c channel + You tab, 7f8efbf Settings categories,
 2d0cae6 YouTube notifications (bell count via notification/get_unseen_count, inbox via browse FEnotifications_inbox because
 get_notification_menu returns an empty promo now; WorkManager 30 min; tested post + tap opens the video).
-NEXT: hard-feature spikes (Cast, Upload/Create, Clips, live chat), premium perks (Jump ahead, queue screen, smart downloads,
-ad-free web check), then full regression + checker.
+Then: a6ea0bb queue (Play next, queue editor), 2c05f0c Jump ahead (heat-map from next: frameworkUpdates
+macroMarkersListEntity MARKER_TYPE_HEATMAP; tested: jumped 0:45 -> 1:10), 1674670 checker fixes (10 items; replay after end
+and hold-2x restore phone-tested), f605c89 web player ignores YouTube's own autoplay after the end (page pauses it,
+Play reloads ours; controls pop up at the end; tested in web mode).
+Debug trick: temp line in KestrelApp.onCreate `WebView.setWebContentsDebuggingEnabled(true)` + adb forward to
+webview_devtools_remote_<pid> + scratchpad cdp.py lets you run JS in the web player. Never commit it.
+Network note: web-mode seeks are slow on this VPN (googlevideo); some channels (e.g. "Tutor Mich") refuse m.youtube playback.
+NEXT: ad-free web check, live chat, local clip, smart downloads, Cast (ask user for device), Upload (ask first),
+then full regression + checker.
 Earlier note (old): Back in fullscreen once left a black paused screen (not reproduced yet). Direct mode, captions, audio track,
 sleep timer, PiP, popup, local file, live not yet tested on the new overlay.
 
