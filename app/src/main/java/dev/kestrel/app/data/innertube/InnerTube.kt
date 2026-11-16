@@ -230,7 +230,42 @@ class InnerTube(private val account: AccountStore) {
         val related: List<Item>,
         /** YouTube's "most replayed" graph (empty when the video has none). */
         val heat: List<dev.kestrel.app.player.HeatPoint> = emptyList(),
+        /** First live chat token, for a stream that is live now (null otherwise). */
+        val chat: String? = null,
     )
+
+    // ---------------- live chat ----------------
+
+    data class ChatMsg(val id: String, val author: String, val avatar: String?, val text: String)
+
+    /** One poll of the live chat: new messages, the next token, how long to wait, and (signed in) what sending needs. */
+    data class ChatPage(val items: List<ChatMsg>, val next: String?, val waitMs: Long, val sendParams: String?)
+
+    suspend fun liveChat(token: String): ChatPage {
+        val signedIn = account.session.value != null
+        val r = post("live_chat/get_live_chat", buildJsonObject { put("continuation", token) }, auth = signedIn, expireOnDenied = false)
+        val lcc = r.at("continuationContents.liveChatContinuation")
+        val items = lcc.arr("actions").orEmpty().mapNotNull { a ->
+            val m = a.at("addChatItemAction.item.liveChatTextMessageRenderer") ?: return@mapNotNull null
+            ChatMsg(m.str("id") ?: return@mapNotNull null, m.obj("authorName").text().orEmpty(), m.obj("authorPhoto").thumb(),
+                m.obj("message").arr("runs").orEmpty().joinToString("") { run ->
+                    run.str("text") ?: run.obj("emoji")?.arr("shortcuts")?.firstOrNull()?.let { (it as? JsonPrimitive)?.content }.orEmpty()
+                })
+        }
+        val c = lcc.arr("continuations")?.firstOrNull()
+        val cd = c.obj("invalidationContinuationData") ?: c.obj("timedContinuationData") ?: c.obj("reloadContinuationData")
+        return ChatPage(items, cd.str("continuation"), cd.str("timeoutMs")?.toLongOrNull() ?: 5_000,
+            if (signedIn) lcc.findAll("sendLiveChatMessageEndpoint").firstOrNull()?.str("params") else null)
+    }
+
+    /** Posts [text] to the live chat (public, as the signed-in account). */
+    suspend fun sendChat(params: String, text: String) {
+        post("live_chat/send_message", buildJsonObject {
+            put("params", params)
+            putJsonObject("richMessage") { putJsonArray("textSegments") { add(buildJsonObject { put("text", text) }) } }
+            put("clientMessageId", java.util.UUID.randomUUID().toString())
+        })
+    }
 
     /** The watch page's details. Signed in, it also has the like/subscribe state and the bell options. */
     // ---------------- notifications (signed in) ----------------
@@ -325,6 +360,8 @@ class InnerTube(private val account: AccountStore) {
                     val start = m.str("startMillis")?.toLongOrNull() ?: return@mapNotNull null
                     dev.kestrel.app.player.HeatPoint(start, m.str("intensityScoreNormalized")?.toFloatOrNull() ?: 0f)
                 },
+            chat = r.findAll("liveChatRenderer").firstOrNull { it.bool("isReplay") != true }
+                ?.findAll("reloadContinuationData")?.firstOrNull()?.str("continuation"),
         )
     }
 

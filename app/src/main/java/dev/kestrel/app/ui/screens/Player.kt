@@ -179,6 +179,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
     var showQuality by remember { mutableStateOf(false) }
     val webQ by dev.kestrel.app.player.WebHost.quality.collectAsStateWithLifecycle()
     var showComments by remember { mutableStateOf(false) }
+    var showChat by remember { mutableStateOf(false) }
     var saveFor by remember { mutableStateOf<Video?>(null) }
     var downloadFor by remember { mutableStateOf<Video?>(null) }
     var expanded by remember(v.id) { mutableStateOf(false) }
@@ -269,6 +270,18 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
                 item { Pill(Icons.Default.PictureInPicture, "PiP") { activity.enterPip() } }
             }
         }
+        if (np.info?.chat != null) {
+            item {
+                Surface(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 12.dp).clickable { showChat = true },
+                    shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text("Live chat", style = MaterialTheme.typography.titleSmall)
+                        Text("Tap to read the chat", Modifier.padding(top = 4.dp), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
         if (np.localPath == null) item {
             Surface(Modifier.fillMaxWidth().padding(12.dp).clickable { showComments = true }, shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainer) {
                 Column(Modifier.padding(12.dp)) {
@@ -331,6 +344,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
         )
     }
     if (showComments) CommentsSheet(v.id) { showComments = false }
+    np.info?.chat?.let { chat -> if (showChat) LiveChatSheet(chat) { showChat = false } }
     if (showCollabs) CollaboratorsDialog(info?.collaborators.orEmpty()) { showCollabs = false }
     saveFor?.let { SaveToPlaylistDialog(it) { saveFor = null } }
     downloadFor?.let { DownloadDialog(it) { downloadFor = null } }
