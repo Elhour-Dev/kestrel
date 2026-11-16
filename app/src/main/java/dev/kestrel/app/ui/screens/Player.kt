@@ -145,7 +145,8 @@ private fun VideoSurface(np: NowPlaying, activity: MainActivity, modifier: Modif
                         setOnClickListener { if (ctl.isVisible) ctl.hide() else ctl.show() }
                     }
                 },
-                onRelease = { ctlRef[0] = null },
+                // The web player lives as long as the app: detach so this view (and the Activity) can be freed.
+                onRelease = { ctlRef[0]?.player = null; ctlRef[0] = null },
                 modifier = Modifier.fillMaxSize(),
             )
             if (np.loading) CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
@@ -223,7 +224,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
     var expanded by remember(v.id) { mutableStateOf(false) }
 
     val info = np.info
-    var showCollabs by remember { mutableStateOf(false) }
+    var showCollabs by remember(v.id) { mutableStateOf(false) }
     LaunchedEffect(info) {
         val st = info ?: return@LaunchedEffect
         if (!Graph.account.isSignedIn || np.localPath != null) return@LaunchedEffect
