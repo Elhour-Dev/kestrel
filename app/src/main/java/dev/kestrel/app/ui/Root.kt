@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.automirrored.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.WatchLater
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -166,6 +167,7 @@ fun KestrelRoot(activity: MainActivity) {
                 val close = { menuFor = null }
                 Text(v.title, Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 MenuRow(Icons.Default.PlayArrow, "Play") { close(); appNav.openVideo(v) }
+                if (PlayerManager.now.value != null) MenuRow(Icons.AutoMirrored.Filled.PlaylistPlay, "Play next") { close(); PlayerManager.playNext(v) }
                 MenuRow(Icons.AutoMirrored.Filled.QueueMusic, "Add to queue") { close(); PlayerManager.addToQueue(v) }
                 MenuRow(Icons.AutoMirrored.Filled.PlaylistAdd, "Save to playlist") { close(); saveFor = v }
                 if (Graph.account.isSignedIn) MenuRow(Icons.Default.WatchLater, "Save to Watch later") {

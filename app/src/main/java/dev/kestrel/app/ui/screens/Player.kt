@@ -27,6 +27,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Headphones
@@ -207,6 +211,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
     }
 
     var showDescription by remember(v.id) { mutableStateOf(false) }
+    var showQueue by remember { mutableStateOf(false) }
     var firstComment by remember(v.id) { mutableStateOf<dev.kestrel.app.data.model.Comment?>(null) }
     LaunchedEffect(v.id, np.localPath) {
         if (np.localPath != null) return@LaunchedEffect
@@ -278,7 +283,12 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
             }
         }
         if (queue.size > 1) {
-            item { SectionTitle("Up next (${index + 1}/${queue.size})") }
+            item {
+                Row(Modifier.fillMaxWidth().padding(end = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    SectionTitle("Up next (${index + 1}/${queue.size})", Modifier.weight(1f))
+                    TextButton(onClick = { showQueue = true }) { Text("Edit queue") }
+                }
+            }
             itemsIndexed(queue.drop(index + 1).take(25), key = { i, q -> "q$i${q.id}" }) { i, q ->
                 VideoRow(q, { PlayerManager.play(q, queue, index + 1 + i) }, { nav.videoMenu(q) })
             }
@@ -292,6 +302,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
         }
     }
 
+    if (showQueue) QueueSheet { showQueue = false }
     if (showDescription) DescriptionSheet(
         title = v.title,
         stats = listOfNotNull(likesText?.let { it to "Likes" }, viewsText?.let { it.removeSuffix(" views") to "Views" }, dateText?.let { it to "Date" }),
@@ -323,6 +334,43 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
     if (showCollabs) CollaboratorsDialog(info?.collaborators.orEmpty()) { showCollabs = false }
     saveFor?.let { SaveToPlaylistDialog(it) { saveFor = null } }
     downloadFor?.let { DownloadDialog(it) { downloadFor = null } }
+}
+
+/** The play queue: tap to play, move up/down, remove. */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun QueueSheet(onDismiss: () -> Unit) {
+    val queue by PlayerManager.queue.collectAsStateWithLifecycle()
+    val index by PlayerManager.index.collectAsStateWithLifecycle()
+    androidx.compose.material3.ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        Text("Queue", Modifier.padding(horizontal = 20.dp, vertical = 8.dp), style = MaterialTheme.typography.titleLarge)
+        LazyColumn(Modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 24.dp)) {
+            itemsIndexed(queue, key = { i, q -> "${i}_${q.id}" }) { i, q ->
+                val current = i == index
+                Row(
+                    Modifier.fillMaxWidth().background(if (current) MaterialTheme.colorScheme.surfaceContainerHigh else Color.Transparent)
+                        .clickable { if (!current) PlayerManager.play(q, queue, i) }.padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AsyncImage(q.thumbnail, null, Modifier.width(96.dp).aspectRatio(16f / 9f).clip(RoundedCornerShape(6.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
+                    Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                        Text(q.title, style = MaterialTheme.typography.titleSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Text(if (current) "Now playing" else q.channelName, style = MaterialTheme.typography.bodySmall,
+                            color = if (current) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                    }
+                    androidx.compose.material3.IconButton(onClick = { PlayerManager.moveInQueue(i, i - 1) }, enabled = i > 0) {
+                        Icon(Icons.Default.KeyboardArrowUp, "Move up")
+                    }
+                    androidx.compose.material3.IconButton(onClick = { PlayerManager.moveInQueue(i, i + 1) }, enabled = i < queue.lastIndex) {
+                        Icon(Icons.Default.KeyboardArrowDown, "Move down")
+                    }
+                    androidx.compose.material3.IconButton(onClick = { PlayerManager.removeFromQueue(i) }, enabled = !current) {
+                        Icon(Icons.Default.Close, "Remove from queue")
+                    }
+                }
+            }
+        }
+    }
 }
 
 /** Rounded grey pill used for the watch-page actions. */

@@ -315,6 +315,31 @@ object PlayerManager {
     fun hasNext() = _index.value < _queue.value.lastIndex
     fun hasPrevious() = _index.value > 0
 
+    /** Puts [v] right after the current video. */
+    fun playNext(v: Video) {
+        if (_now.value == null) { play(v); return }
+        _queue.update { q -> q.filterIndexed { i, x -> i <= _index.value || x.id != v.id }.toMutableList().apply { add((_index.value + 1).coerceAtMost(size), v) } }
+        _messages.tryEmit("Playing next")
+    }
+
+    /** Removes queue entry [i] (not the one playing). */
+    fun removeFromQueue(i: Int) {
+        val cur = _index.value
+        if (i == cur || i !in _queue.value.indices) return
+        _queue.update { q -> q.filterIndexed { j, _ -> j != i } }
+        if (i < cur) _index.value = cur - 1
+    }
+
+    /** Moves queue entry [from] to [to], keeping the playing video marked as playing. */
+    fun moveInQueue(from: Int, to: Int) {
+        val q = _queue.value.toMutableList()
+        if (from !in q.indices || to !in q.indices || from == to) return
+        val playing = q[_index.value]
+        q.add(to, q.removeAt(from))
+        _queue.value = q
+        _index.value = q.indexOfFirst { it === playing }.coerceAtLeast(0)
+    }
+
     fun addToQueue(v: Video) {
         if (_now.value == null) play(v) else _queue.update { it + v }
         _messages.tryEmit("Added to queue")
