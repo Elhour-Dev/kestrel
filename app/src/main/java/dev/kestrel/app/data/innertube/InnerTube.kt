@@ -230,6 +230,58 @@ class InnerTube(private val account: AccountStore) {
     )
 
     /** The watch page's details. Signed in, it also has the like/subscribe state and the bell options. */
+    // ---------------- notifications (signed in) ----------------
+
+    /** One entry of YouTube's notification inbox (the bell). */
+    data class Notice(
+        val id: String,
+        val text: String,
+        val time: String,
+        val avatar: String?,
+        val thumbnail: String?,
+        val videoId: String?,
+        val read: Boolean,
+    )
+
+    data class NoticePage(val items: List<Notice>, val next: String?)
+
+    /** The bell's inbox, newest first. */
+    suspend fun notifications(): NoticePage {
+        // The inbox page of the mobile site has the entries; the desktop bell menu came back empty (Nov 2026).
+        val page = parseNotices(post("browse", buildJsonObject { put("browseId", "FEnotifications_inbox") }))
+        if (page.items.isNotEmpty()) return page
+        return parseNotices(post("notification/get_notification_menu", buildJsonObject { put("notificationsMenuRequestType", "NOTIFICATIONS_MENU_REQUEST_TYPE_INBOX") }))
+    }
+
+    suspend fun notificationsMore(token: String): NoticePage =
+        parseNotices(post("browse", buildJsonObject { put("continuation", token) }))
+
+    /** Number shown on the bell. */
+    suspend fun unseenNotifications(): Int {
+        val r = post("notification/get_unseen_count", buildJsonObject {})
+        return r.findFirstStr("unseenCount")?.toIntOrNull()
+            ?: r.findAll("updateNotificationsUnseenCountAction").firstOrNull()?.str("unseenCount")?.toIntOrNull()
+            ?: 0
+    }
+
+    private fun parseNotices(r: JsonObject): NoticePage {
+        val items = r.findAll("notificationRenderer").mapNotNull { n ->
+            val id = n.str("notificationId") ?: return@mapNotNull null
+            Notice(
+                id = id,
+                text = n.obj("shortMessage").text().orEmpty(),
+                time = n.obj("sentTimeText").text().orEmpty(),
+                avatar = n.obj("thumbnail").thumb(),
+                thumbnail = n.obj("videoThumbnail").thumb(),
+                videoId = n.findFirstStr("videoId"),
+                read = n.str("read") == "true",
+            )
+        }
+        val next = r.findAll("continuationEndpoint").firstOrNull()?.findFirstStr("token")
+            ?: r.findFirstStr("continuation")
+        return NoticePage(items, next)
+    }
+
     suspend fun watchInfo(videoId: String): WatchInfo {
         val signedIn = account.session.value != null
         val r = post("next", buildJsonObject { put("videoId", videoId) }, auth = signedIn)

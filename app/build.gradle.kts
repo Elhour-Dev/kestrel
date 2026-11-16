@@ -91,6 +91,7 @@ tasks.withType<Test>().configureEach {
 dependencies {
     coreLibraryDesugaring(libs.desugar)
     implementation(libs.newpipe.extractor)
+    implementation(libs.work.runtime)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

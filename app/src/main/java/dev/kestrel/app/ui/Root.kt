@@ -154,6 +154,7 @@ fun KestrelRoot(activity: MainActivity) {
                     composable("help") { HelpScreen() }
                     composable("subchannels") { SubscribedChannelsScreen() }
                     composable("playlists") { PlaylistsScreen() }
+                    composable("notifications") { NotificationsScreen() }
                 }
                 if (showMini && !fullscreenPlayer) MiniPlayer(Modifier.align(Alignment.BottomEnd).padding(12.dp)) { nav.navigate("player") { launchSingleTop = true } }
                 }

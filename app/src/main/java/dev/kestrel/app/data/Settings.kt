@@ -76,6 +76,8 @@ class Settings(context: Context) {
     val sponsorBlockEnabled = bool("sb_enabled", true)
     val sponsorBlockCategories = set("sb_categories", SponsorCategories.defaults)
     val sponsorBlockToast = bool("sb_toast", true)
+    /** Phone notifications for the account's YouTube notifications (the bell). */
+    val ytNotifications = bool("yt_notifications", true)
     /** SAF tree URI, or "" for the app's own Movies/Music folder. */
     val downloadFolder = str("download_folder", "")
     val maxParallelDownloads = int("max_parallel_downloads", 3)

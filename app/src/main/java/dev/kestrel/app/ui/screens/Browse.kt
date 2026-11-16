@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.background
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.WatchLater
 import androidx.compose.material.icons.outlined.ThumbUp
@@ -104,7 +106,22 @@ suspend fun moreAny(token: Any): Page<Item> = when (token) {
 @Composable
 fun MainTopBar() {
     val nav = LocalNav.current
+    val signedIn = Graph.account.state.collectAsStateWithLifecycle().value == AccountState.SignedIn
+    val unseen by dev.kestrel.app.system.YtNotifications.unseen.collectAsStateWithLifecycle()
+    androidx.compose.runtime.LaunchedEffect(signedIn) {
+        // Bell count, refreshed every 5 minutes while the app is open.
+        while (signedIn) { dev.kestrel.app.system.YtNotifications.refreshCount(); kotlinx.coroutines.delay(5 * 60_000L) }
+    }
     dev.kestrel.app.ui.BrandBar {
+        if (signedIn) Box {
+            dev.kestrel.app.ui.BarIcon(Icons.Outlined.Notifications, if (unseen > 0) "Notifications, $unseen new" else "Notifications") { nav.go("notifications") }
+            if (unseen > 0) Text(
+                if (unseen > 9) "9+" else unseen.toString(),
+                Modifier.align(Alignment.TopEnd).padding(top = 6.dp, end = 4.dp)
+                    .background(dev.kestrel.app.ui.theme.LiveRed, androidx.compose.foundation.shape.RoundedCornerShape(50)).padding(horizontal = 5.dp),
+                color = androidx.compose.ui.graphics.Color.White, style = MaterialTheme.typography.labelSmall,
+            )
+        }
         dev.kestrel.app.ui.BarIcon(Icons.Default.Search, "Search") { nav.go("search") }
     }
 }

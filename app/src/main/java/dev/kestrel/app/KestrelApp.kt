@@ -47,6 +47,7 @@ class KestrelApp : Application(), SingletonImageLoader.Factory {
         dev.kestrel.app.player.PoTokens.install(this)
         dev.kestrel.app.player.JsSolver.install(this)
         createChannels()
+        dev.kestrel.app.system.YtNotifications.schedule(this)
         PlayerManager.init(this)
         Graph.downloads = Downloads(this)
     }
@@ -67,6 +68,7 @@ class KestrelApp : Application(), SingletonImageLoader.Factory {
         val nm = getSystemService(NotificationManager::class.java)
         nm.createNotificationChannel(NotificationChannel(CH_DOWNLOADS, "Downloads", NotificationManager.IMPORTANCE_LOW))
         nm.createNotificationChannel(NotificationChannel(CH_POPUP, "Popup player", NotificationManager.IMPORTANCE_LOW))
+        dev.kestrel.app.system.YtNotifications.createChannel(this)
     }
 
     override fun newImageLoader(context: PlatformContext): ImageLoader =

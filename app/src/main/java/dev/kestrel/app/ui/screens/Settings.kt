@@ -291,6 +291,10 @@ fun SettingsScreen() {
                 if (session != null) {
                     item { SwitchRow("Send plays to watch history", "Videos you watch appear in your YouTube history", s.sendHistory) }
                     item {
+                        SwitchRow("YouTube notifications", "Show your account's notifications (new uploads, replies) on this phone", s.ytNotifications)
+                        androidx.compose.runtime.LaunchedEffect(s.ytNotifications.value) { dev.kestrel.app.system.YtNotifications.schedule(Graph.app) }
+                    }
+                    item {
                         ListItem(headlineContent = { Text("Sync subscriptions now") }, modifier = Modifier.clickable {
                             scope.launchCatching(nav, "Subscriptions synced") { Graph.store.mergeSubscriptions(Graph.innerTube.subscribedChannels()) }
                         })
