@@ -1,5 +1,7 @@
 package dev.kestrel.app.ui.screens
 
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -87,13 +89,13 @@ fun toggleSubscribe(c: Channel, scope: CoroutineScope, nav: AppNav, params: Stri
 }
 
 @Composable
-fun SubscribeButton(c: Channel, params: String? = null) {
+fun SubscribeButton(c: Channel, params: String? = null, modifier: Modifier = Modifier) {
     val nav = LocalNav.current
     val scope = rememberCoroutineScope()
     val lib by Graph.store.library.collectAsStateWithLifecycle()
     val subscribed = lib.subscriptions.any { it.id == c.id }
-    if (subscribed) OutlinedButton(onClick = { toggleSubscribe(c, scope, nav, params) }) { Text("Subscribed") }
-    else Button(onClick = { toggleSubscribe(c, scope, nav, params) }) { Text("Subscribe") }
+    if (subscribed) OutlinedButton(onClick = { toggleSubscribe(c, scope, nav, params) }, modifier) { Text("Subscribed") }
+    else Button(onClick = { toggleSubscribe(c, scope, nav, params) }, modifier) { Text("Subscribe") }
 }
 
 private val tabOrder = listOf(ChannelTabs.VIDEOS to "Videos", ChannelTabs.SHORTS to "Shorts", ChannelTabs.LIVESTREAMS to "Live", ChannelTabs.PLAYLISTS to "Playlists")
@@ -120,17 +122,24 @@ fun ChannelScreen(id: String) {
                     item {
                         Column {
                             d.banner?.let {
-                                AsyncImage(it, null, Modifier.fillMaxWidth().aspectRatio(6.2f).background(MaterialTheme.colorScheme.surfaceVariant), contentScale = ContentScale.Crop)
+                                AsyncImage(it, null, Modifier.padding(horizontal = 12.dp).fillMaxWidth().aspectRatio(6.2f)
+                                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp)).background(MaterialTheme.colorScheme.surfaceVariant), contentScale = ContentScale.Crop)
                             }
-                            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Avatar(d.channel.avatar, 64)
-                                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                                    Text(d.channel.name, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                                    if (d.channel.subscribers >= 0) Text("${formatCount(d.channel.subscribers)} subscribers", style = MaterialTheme.typography.bodySmall)
+                            Row(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Avatar(d.channel.avatar, 72)
+                                Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                                    Text(d.channel.name, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                    if (d.channel.subscribers >= 0) Text("${formatCount(d.channel.subscribers)} subscribers", style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                SubscribeButton(d.channel)
                             }
-                            if (d.description.isNotBlank()) Text(d.description, Modifier.padding(horizontal = 16.dp), maxLines = 3, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+                            if (d.description.isNotBlank()) {
+                                var more by remember { mutableStateOf(false) }
+                                Text(d.description, Modifier.fillMaxWidth().clickable { more = !more }.padding(horizontal = 16.dp, vertical = 10.dp),
+                                    maxLines = if (more) Int.MAX_VALUE else 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            SubscribeButton(d.channel, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp))
                             if (tabs.size > 1) PrimaryScrollableTabRow(selectedTabIndex = tab, edgePadding = 8.dp) {
                                 tabs.forEachIndexed { i, (_, label) -> Tab(tab == i, { tab = i }, text = { Text(label) }) }
                             }
@@ -142,7 +151,8 @@ fun ChannelScreen(id: String) {
                 } else {
                     val handler = d.tabs[tabs[tab.coerceIn(tabs.indices)].first]!!
                     val vm = viewModel(key = "ch-$id-$tab") { itemsVm({ NpRepo.channelTab(handler) }, ::moreAny) }
-                    PagedItemList(vm, "Nothing here.", compact = true, header = header)
+                    val kind = tabs[tab.coerceIn(tabs.indices)].first
+                    PagedItemList(vm, "Nothing here.", compact = kind == ChannelTabs.SHORTS || kind == ChannelTabs.PLAYLISTS, header = header)
                 }
             }
         }
