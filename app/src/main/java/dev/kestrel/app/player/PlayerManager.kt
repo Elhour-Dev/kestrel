@@ -468,7 +468,13 @@ object PlayerManager {
         startService()
     }
 
+    /** Start time from a shared link's "t=" (video id to ms); used once, before the saved position. */
+    @Volatile var linkStart: Pair<String, Long>? = null
+
+    private fun takeLinkStart(id: String): Long? = linkStart?.takeIf { it.first == id }?.second?.also { linkStart = null }
+
     private fun resume(id: String, durationSec: Long) {
+        takeLinkStart(id)?.let { player.seekTo(it); return }
         if (!Graph.settings.resumePlayback.value) return
         val saved = Graph.store.position(id)
         val durMs = if (durationSec > 0) durationSec * 1000 else Long.MAX_VALUE
@@ -590,6 +596,7 @@ object PlayerManager {
 
     /** Saved position to resume from, in seconds (0 = start). */
     private fun resumeSec(video: Video): Long {
+        takeLinkStart(video.id)?.let { return it / 1000 }
         if (!Graph.settings.resumePlayback.value || video.isLive) return 0
         val saved = Graph.store.position(video.id)
         val durMs = if (video.durationSec > 0) video.durationSec * 1000 else Long.MAX_VALUE

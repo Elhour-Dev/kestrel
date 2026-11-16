@@ -223,6 +223,16 @@ private fun MenuRow(icon: ImageVector, label: String, onClick: () -> Unit) {
     )
 }
 
+/** "t=" or "start=" from a YouTube link: 95, 95s, 1m35s, 1h2m3s. */
+internal fun linkStartMs(url: String): Long? {
+    val v = Regex("[?&#](?:t|start)=([0-9hms]+)").find(url)?.groupValues?.get(1) ?: return null
+    v.toLongOrNull()?.let { return it * 1000 }
+    val m = Regex("^(?:([0-9]+)h)?(?:([0-9]+)m)?(?:([0-9]+)s)?$").find(v) ?: return null
+    val (h, mi, se) = m.destructured
+    val sec = (h.toLongOrNull() ?: 0) * 3600 + (mi.toLongOrNull() ?: 0) * 60 + (se.toLongOrNull() ?: 0)
+    return sec.takeIf { it > 0 }?.times(1000)
+}
+
 private fun handleIntent(i: Intent, nav: AppNav) {
     when (i.action) {
         MainActivity.ACTION_OPEN_PLAYER -> if (PlayerManager.now.value != null) nav.go("player")
@@ -230,7 +240,10 @@ private fun handleIntent(i: Intent, nav: AppNav) {
         Intent.ACTION_SEND, Intent.ACTION_VIEW -> {
             val text = i.getStringExtra(Intent.EXTRA_TEXT) ?: i.dataString ?: return
             val url = Regex("https?://\\S+").find(text)?.value ?: text
-            NpRepo.videoId(url)?.let { nav.openVideo(Video(it, "")); return }
+            NpRepo.videoId(url)?.let { id ->
+                linkStartMs(url)?.let { PlayerManager.linkStart = id to it }
+                nav.openVideo(Video(id, "")); return
+            }
             NpRepo.playlistId(url)?.let { nav.openPlaylist(it); return }
             NpRepo.channelId(url)?.let { nav.openChannel(it); return }
             nav.message("Can't open this link")
