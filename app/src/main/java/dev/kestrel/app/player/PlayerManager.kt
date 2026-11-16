@@ -275,8 +275,13 @@ object PlayerManager {
 
     fun setQuality(height: Int) {
         val np = _now.value ?: return
+        if (np.web) {
+            // YouTube's web player picks the stream itself; tell it which level we want.
+            WebHost.wantHeight = height
+            _now.value = np.copy(quality = height)
+            return
+        }
         val r = np.resolved ?: return
-        if (np.web) return
         _now.value = np.copy(quality = height)
         rebuild(r, keepPosition = true)
     }
@@ -525,6 +530,7 @@ object PlayerManager {
 
     private fun startWeb(video: Video, startSec: Long) {
         _now.update { it?.copy(loading = false, error = null, web = true) }
+        WebHost.wantHeight = _now.value?.quality ?: Graph.settings.defaultQuality.value
         WebHost.play(appContext, video.id, startSec)
         startService()
     }

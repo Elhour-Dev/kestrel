@@ -72,6 +72,18 @@ object WebHost {
       return;
     }
     if (window.kestrelInAd) { window.kestrelInAd = false; v.playbackRate = 1; }
+    // Quality: report the levels YouTube offers and apply the one the app wants.
+    var mp = document.getElementById('movie_player');
+    if (mp && mp.getAvailableQualityLevels) {
+      var lv = (mp.getAvailableQualityLevels() || []).join(',');
+      var cur = (mp.getPlaybackQuality && mp.getPlaybackQuality()) || '';
+      if (lv !== window.kestrelLv || cur !== window.kestrelCur) { window.kestrelLv = lv; window.kestrelCur = cur; KWeb.quality(lv, cur); }
+      var w = KWeb.wanted();
+      if (w && lv && w !== window.kestrelQDone && mp.setPlaybackQualityRange) {
+        window.kestrelQDone = w;
+        try { mp.setPlaybackQualityRange(w, w); mp.setPlaybackQuality && mp.setPlaybackQuality(w); } catch(e){}
+      }
+    }
     if (!v.kestrelHooked) {
       v.kestrelHooked = true;
       v.addEventListener('ended', function(){ if (!document.querySelector('.ad-showing,.ad-interrupting')) KWeb.ended(); });
@@ -105,6 +117,28 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
         private set
     @Volatile var playing = false
         private set
+
+    /** Heights YouTube's web player offers for the current video (highest first) and the one playing (0 = unknown). */
+    data class Quality(val heights: List<Int> = emptyList(), val current: Int = 0)
+    private val _quality = kotlinx.coroutines.flow.MutableStateFlow(Quality())
+    val quality: kotlinx.coroutines.flow.StateFlow<Quality> = _quality
+
+    /** Height the app wants (0 = best). The page asks for it every half second and applies it once per change. */
+    @Volatile var wantHeight = 0
+
+    private val LEVELS = mapOf(
+        "highres" to 4320, "hd2880" to 2880, "hd2160" to 2160, "hd1440" to 1440, "hd1080" to 1080,
+        "hd720" to 720, "large" to 480, "medium" to 360, "small" to 240, "tiny" to 144,
+    )
+    @Volatile private var levels: List<String> = emptyList()
+
+    /** YouTube level for [wantHeight]: the highest one not above it, else the lowest. */
+    internal fun pickLevel(available: List<String>, want: Int): String? {
+        val known = available.filter { it in LEVELS }.sortedByDescending { LEVELS[it] }
+        if (known.isEmpty()) return null
+        if (want <= 0) return known.first()
+        return known.firstOrNull { LEVELS.getValue(it) <= want } ?: known.last()
+    }
 
     /** Called on the main thread with (positionMs, durationMs). */
     var onProgress: ((Long, Long) -> Unit)? = null
@@ -172,6 +206,14 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
                     if (stateChanged) changed()
                 }
                 @JavascriptInterface
+                fun quality(lv: String, cur: String) {
+                    levels = lv.split(',').filter { it.isNotBlank() }
+                    _quality.value = Quality(levels.mapNotNull { LEVELS[it] }.distinct().sortedDescending(), LEVELS[cur] ?: 0)
+                    android.util.Log.i("Kestrel", "web quality: levels=$lv current=$cur")
+                }
+                @JavascriptInterface
+                fun wanted(): String = pickLevel(levels, wantHeight) ?: ""
+                @JavascriptInterface
                 fun error() {
                     main.post { onError?.invoke() }
                 }
@@ -197,6 +239,8 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
         positionMs = startSec * 1000
         durationMs = 0
         playing = true
+        levels = emptyList()
+        _quality.value = Quality()
         val t = if (startSec > 0) "&t=${startSec}s" else ""
         w.loadUrl("https://m.youtube.com/watch?v=$id$t")
         changed()

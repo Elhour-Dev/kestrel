@@ -221,6 +221,7 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
     val index by PlayerManager.index.collectAsStateWithLifecycle()
     var like by remember(v.id) { mutableStateOf<String?>(null) }
     var showQuality by remember { mutableStateOf(false) }
+    val webQ by dev.kestrel.app.player.WebHost.quality.collectAsStateWithLifecycle()
     var showComments by remember { mutableStateOf(false) }
     var saveFor by remember { mutableStateOf<Video?>(null) }
     var downloadFor by remember { mutableStateOf<Video?>(null) }
@@ -272,6 +273,11 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
                     Chip(if (like == "LIKE") Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp, r?.likes?.takeIf { it >= 0 }?.let { formatCount(it) } ?: info?.likes?.ifBlank { null } ?: "Like", like == "LIKE") { rate("LIKE") }
                 }
                 item { Chip(if (like == "DISLIKE") Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown, "Dislike", like == "DISLIKE") { rate("DISLIKE") } }
+                if (np.web && webQ.heights.isNotEmpty()) item {
+                    Chip(Icons.Default.HighQuality, webQ.current.takeIf { it > 0 }?.let { "${it}p" } ?: "Quality") { showQuality = true }
+                } else if (r != null && !r.isLive && np.localPath == null && !np.web) item {
+                    Chip(Icons.Default.HighQuality, r.pickVideo(np.quality)?.label ?: "Quality") { showQuality = true }
+                }
                 item { Chip(Icons.AutoMirrored.Filled.PlaylistAdd, "Save") { saveFor = v } }
                 item { Chip(Icons.Default.Download, "Download") { downloadFor = v } }
                 item { Chip(Icons.Default.Headphones, "Audio only", np.audioOnly) { PlayerManager.setAudioOnly(!np.audioOnly) } }
@@ -290,9 +296,6 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
                     }
                 }
                 item { Chip(Icons.Default.PictureInPicture, "PiP") { activity.enterPip() } }
-                if (r != null && !r.isLive && np.localPath == null && !np.web) item {
-                    Chip(Icons.Default.HighQuality, r.pickVideo(np.quality)?.label ?: "Quality") { showQuality = true }
-                }
                 item {
                     Chip(Icons.Default.Share, "Share") {
                         ctx.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, v.url), "Share"))
@@ -342,15 +345,17 @@ private fun Details(np: NowPlaying, activity: MainActivity) {
         }
     }
 
-    if (showQuality && r != null) {
+    if (showQuality && (np.web || r != null)) {
+        val heights = if (np.web) webQ.heights else r!!.qualities()
+        val selected = if (np.web) webQ.current else r!!.pickVideo(np.quality)?.height
         AlertDialog(
             onDismissRequest = { showQuality = false },
             title = { Text("Quality") },
             text = {
                 LazyColumn {
-                    items(r.qualities()) { h ->
+                    items(heights) { h ->
                         Row(Modifier.fillMaxWidth().clickable { PlayerManager.setQuality(h); showQuality = false }, verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(r.pickVideo(np.quality)?.height == h, { PlayerManager.setQuality(h); showQuality = false })
+                            RadioButton(selected == h, { PlayerManager.setQuality(h); showQuality = false })
                             Text("${h}p")
                         }
                     }
