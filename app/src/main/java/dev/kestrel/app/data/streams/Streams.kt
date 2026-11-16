@@ -11,6 +11,7 @@ import dev.kestrel.app.data.newpipe.NpRepo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -87,9 +88,15 @@ fun Throwable.isUnplayable(signedIn: Boolean): Boolean = generateSequence(this) 
         it is org.schabi.newpipe.extractor.exceptions.PaidContentException ||
         it is org.schabi.newpipe.extractor.exceptions.GeographicRestrictionException ||
         (it is org.schabi.newpipe.extractor.exceptions.AgeRestrictedContentException && !signedIn) ||
-        // Exact class: the bot check is a subclass. "ERROR" is YouTube's status for removed or wrong IDs.
-        (it.javaClass == org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException::class.java &&
-            (it.message?.contains("UNPLAYABLE") == true || it.message?.contains("ERROR") == true))
+        // Exact class: the bot check is a subclass.
+        (it.javaClass == org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException::class.java && it.message?.contains("UNPLAYABLE") == true) ||
+        it.isRemoved()
+}
+
+/** YouTube says the video doesn't exist (removed or wrong ID). Not "isn't available, try again later". */
+fun Throwable.isRemoved(): Boolean = generateSequence(this) { it.cause }.any {
+    it.javaClass == org.schabi.newpipe.extractor.exceptions.ContentNotAvailableException::class.java &&
+        it.message?.contains("ERROR: \"This video is unavailable\"") == true
 }
 
 fun Throwable.isBotCheck() = generateSequence(this) { it.cause }.any {
@@ -116,15 +123,21 @@ object Streams {
         var npError: Exception? = null
         var fbError: Exception? = null
         suspend fun newPipe(): Resolved? = try {
-            val r = fixLinks(fromNewPipe(NpRepo.stream(videoId)))
+            val t = System.currentTimeMillis()
+            val info = NpRepo.stream(videoId)
+            val t1 = System.currentTimeMillis()
+            val r = fixLinks(fromNewPipe(info))
+            val t2 = System.currentTimeMillis()
             linksCheck(r)
+            android.util.Log.i("Kestrel", "NewPipe for $videoId: info ${t1 - t} ms, n ${t2 - t1} ms, check ${System.currentTimeMillis() - t2} ms")
             r
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             android.util.Log.w("Kestrel", "NewPipe failed for $videoId: $e")
             // Final answer: stop the other source too (the exception ends the hedge).
-            if (e.isUnplayable(signedIn)) throw e
+            // Signed in, NewPipe (no cookies) can't see private or members-only videos the account can: only a removed video is final then.
+            if (if (signedIn) e.isRemoved() else e.isUnplayable(false)) throw e
             npError = e; null
         }
         suspend fun fallback(): Resolved? = try {
@@ -380,11 +393,14 @@ object Fallback {
             val playerPot = dev.kestrel.app.player.PoTokens.mint(videoId)
             val streamPot = ds?.let { dev.kestrel.app.player.PoTokens.mint(it) }
             for (c in authClients) {
+                // Cancelled (another source won): stop instead of trying the next client.
+                ensureActive()
                 try {
                     val r = tryClient(c, videoId, session.visitorData.ifBlank { freshVisitor() }, sts, playerPot, if (c.web) streamPot else null, session)
                     android.util.Log.i("Kestrel", "signed-in client ${c.name} works for $videoId")
                     return@withContext r
                 } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
                     android.util.Log.w("Kestrel", "signed-in client ${c.name} failed: ${e.message}")
                     lastError = keepRefused(lastError, e)
                 }
@@ -398,12 +414,14 @@ object Fallback {
             val order = clients.indices.sortedBy { if (it == preferred) -1 else it }
             for (i in order) {
                 val c = clients[i]
+                ensureActive()
                 try {
                     val r = tryClient(c, videoId, visitor, sts, pot?.playerRequestPoToken, pot?.streamingDataPoToken)
                     preferred = i
                     android.util.Log.i("Kestrel", "backup client ${c.name} works for $videoId (round $round)")
                     return@withContext r
                 } catch (e: Exception) {
+                    if (e is kotlinx.coroutines.CancellationException) throw e
                     android.util.Log.w("Kestrel", "backup client ${c.name} failed (round $round): ${e.message}")
                     lastError = keepRefused(lastError, e)
                     if ((e.isLinksRefused() || e.isBotCheck()) && ++refusals >= MAX_REFUSALS) throw lastError

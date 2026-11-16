@@ -53,6 +53,15 @@ class HedgeTest {
         assertTrue(kotlinx.coroutines.withTimeout(1_000) { cancelled.await() })
     }
 
+    @Test fun finalErrorEndsHedgeAndStopsOther() = runBlocking {
+        val stopped = CompletableDeferred<Unit>()
+        val e = runCatching {
+            Streams.hedged<String>({ try { delay(5_000); "a" } finally { stopped.complete(Unit) } }, { delay(10); throw IllegalStateException("removed") }, hedge)
+        }.exceptionOrNull()
+        assertEquals("removed", e?.message)
+        kotlinx.coroutines.withTimeout(1_000) { stopped.await() }
+    }
+
     @Test fun callerCancelStopsBoth() = runBlocking {
         val stopped = CompletableDeferred<Unit>()
         val job = launch {
