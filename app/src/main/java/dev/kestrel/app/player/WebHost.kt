@@ -72,6 +72,8 @@ object WebHost {
       return;
     }
     if (window.kestrelInAd) { window.kestrelInAd = false; v.playbackRate = 1; }
+    // Playback speed chosen in the app.
+    try { var rate = KWeb.rate(); if (rate > 0 && v.playbackRate !== rate) v.playbackRate = rate; } catch(e) {}
     // Quality: report the levels YouTube offers and apply the one the app wants.
     // Re-applied if YouTube drifts off it (ads, network), at most 3 tries per request, 4 s apart.
     try {
@@ -127,6 +129,9 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
     data class Quality(val heights: List<Int> = emptyList(), val current: Int = 0)
     private val _quality = kotlinx.coroutines.flow.MutableStateFlow(Quality())
     val quality: kotlinx.coroutines.flow.StateFlow<Quality> = _quality
+
+    /** Playback speed the app wants; the page applies it every half second. */
+    @Volatile var speed = 1f
 
     /** Height the app wants (0 = let YouTube choose). The page asks for it every half second. */
     @Volatile var wantHeight = 0
@@ -218,6 +223,8 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
                     _quality.value = Quality(levels.mapNotNull { LEVELS[it] }.distinct().sortedDescending(), LEVELS[cur] ?: 0)
                     android.util.Log.i("Kestrel", "web quality: levels=$lv current=$cur")
                 }
+                @JavascriptInterface
+                fun rate(): Double = speed.toDouble()
                 @JavascriptInterface
                 fun wanted(): String = (pickLevel(levels, wantHeight) ?: "") + "|" + wantRequest
                 @JavascriptInterface

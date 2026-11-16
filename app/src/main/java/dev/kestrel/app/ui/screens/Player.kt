@@ -79,7 +79,6 @@ import dev.kestrel.app.MainActivity
 import dev.kestrel.app.data.model.Channel
 import dev.kestrel.app.data.model.Video
 import dev.kestrel.app.data.model.formatCount
-import dev.kestrel.app.player.GestureFrame
 import dev.kestrel.app.player.NowPlaying
 import dev.kestrel.app.player.PlayerManager
 import dev.kestrel.app.player.PopupService
@@ -126,79 +125,32 @@ fun PlayerScreen(activity: MainActivity) {
 @Composable
 private fun VideoSurface(np: NowPlaying, activity: MainActivity, modifier: Modifier) {
     val inPip = MainActivity.Ui.inPip
-    if (np.web) {
-        // YouTube's page is shown without its own controls: put ours on top (tap to show/hide).
-        val ctlRef = remember { arrayOfNulls<androidx.media3.ui.PlayerControlView>(1) }
-        LaunchedEffect(np.video.id) { ctlRef[0]?.show() }
-        Box(modifier) {
+    Box(modifier) {
+        if (np.web) {
+            // YouTube's page without its own controls; ours go on top and take every touch.
             WebPlayer(Modifier.fillMaxSize())
-            if (!inPip) AndroidView(
+        } else {
+            AndroidView(
                 factory = { ctx ->
-                    val ctl = androidx.media3.ui.PlayerControlView(ctx).apply {
-                        player = PlayerManager.webPlayer
-                        showTimeoutMs = 3000
-                    }
-                    ctlRef[0] = ctl
-                    android.widget.FrameLayout(ctx).apply {
-                        addView(ctl, android.widget.FrameLayout.LayoutParams(-1, -1))
-                        contentDescription = "Show player controls"
-                        setOnClickListener { if (ctl.isVisible) ctl.hide() else ctl.show() }
+                    PlayerView(ctx).apply {
+                        player = PlayerManager.player
+                        useController = false
+                        keepScreenOn = true
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     }
                 },
-                // The web player lives as long as the app: detach so this view (and the Activity) can be freed.
-                onRelease = { ctlRef[0]?.player = null; ctlRef[0] = null },
+                update = { pv -> if (pv.player == null) pv.player = PlayerManager.player },
+                onRelease = { pv -> pv.player = null },
                 modifier = Modifier.fillMaxSize(),
             )
-            if (np.loading) CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
+            if (np.audioOnly && np.error == null && !np.loading) {
+                AsyncImage(np.video.thumbnail, null, Modifier.fillMaxSize(), alpha = 0.55f)
+            }
         }
-        return
-    }
-    val pvRef = remember { arrayOfNulls<PlayerView>(1) }
-    LaunchedEffect(np.video.id, np.loading) {
-        if (np.loading || np.error != null || inPip) return@LaunchedEffect
-        // Show once playback really starts: shown before that, Media3 keeps the controls up for good.
-        kotlinx.coroutines.withTimeoutOrNull(60_000) { while (!PlayerManager.player.isPlaying) kotlinx.coroutines.delay(200) }
-        pvRef[0]?.showController()
-    }
-    Box(modifier) {
-        AndroidView(
-            factory = { ctx ->
-                val frame = GestureFrame(ctx, activity)
-                val pv = PlayerView(ctx).apply {
-                    player = PlayerManager.player
-                    setShowSubtitleButton(true)
-                    setShowNextButton(true)
-                    setShowPreviousButton(true)
-                    controllerShowTimeoutMs = 3000
-                    keepScreenOn = true
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    setFullscreenButtonClickListener { activity.setFullscreen(it) }
-                }
-                frame.onSeek = { fwd ->
-                    val p = PlayerManager.player
-                    p.seekTo((p.currentPosition + if (fwd) 10_000 else -10_000).coerceAtLeast(0))
-                }
-                frame.addView(pv, android.widget.FrameLayout.LayoutParams(-1, -1))
-                frame.tag = pv
-                pvRef[0] = pv
-                frame
-            },
-            update = { frame ->
-                val pv = frame.tag as PlayerView
-                if (pv.player == null) pv.player = PlayerManager.player
-                pv.useController = !inPip && np.error == null
-                frame.enabledGestures = !inPip
-                pv.setFullscreenButtonState(MainActivity.Ui.fullscreen)
-            },
-            onRelease = { frame -> (frame.tag as PlayerView).player = null; pvRef[0] = null },
-            modifier = Modifier.fillMaxSize(),
-        )
-        if (np.audioOnly && np.error == null && !np.loading) {
-            AsyncImage(np.video.thumbnail, null, Modifier.fillMaxSize().padding(bottom = 48.dp), alpha = 0.55f)
-        }
+        if (!inPip) PlayerControls(np, activity, MainActivity.Ui.fullscreen || LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE, Modifier.fillMaxSize())
         if (np.loading) CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color.White)
         np.error?.let { err ->
-            // Opaque, so the player's controls never show through the message.
+            // Opaque, so nothing shows through the message.
             Column(Modifier.fillMaxSize().background(Color.Black).padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(err, color = Color.White, textAlign = TextAlign.Center)
                 Spacer(Modifier.height(8.dp))

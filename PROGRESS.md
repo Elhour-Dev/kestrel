@@ -23,6 +23,12 @@ Next: player in 4 commits (Compose overlay on PlayerView useController=false + w
 quality/speed/captions/audio track/audio only/popup/PiP/sleep/loop; gestures ported into overlay pointerInput;
 watch-page restyle). Test each in direct, web, local file, live, PiP, fullscreen.
 Not yet phone-tested: 46ed38c drift retry (hard to force).
+Player overlay (commit after b669ac3): Compose controls for direct + web, gear sheet (quality, speed 0.25-4x incl. web,
+captions, audio track, sleep timer, loop, audio only, PiP, popup), double-tap seek, hold 2x, swipe up fullscreen /
+down minimize, brightness/volume swipes in fullscreen. GestureFrame removed.
+Phone-tested in WEB mode only: controls, auto-hide, settings sheet, 1.5x speed, double-tap +10 s, swipe up fullscreen.
+OPEN: Back in fullscreen once left a black paused screen (not reproduced yet). Direct mode, captions, audio track,
+sleep timer, PiP, popup, local file, live not yet tested on the new overlay.
 
 ### Reference: YouTube Android app on the phone (2026-11-16)
 - Top bar: logo left; bell (red count badge) + search right. Under it text tabs: Home | Subs | Music | Live | More (underline on active). More = list: Movies & TV, Charts, Gaming, ...

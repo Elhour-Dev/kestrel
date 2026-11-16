@@ -113,6 +113,7 @@ object PlayerManager {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) {
                     _now.value?.let { Graph.store.savePosition(it.video.id, 0) }
+                    if (sleepAtEnd()) return
                     if (_index.value < _queue.value.lastIndex) next()
                 }
             }
@@ -154,12 +155,57 @@ object PlayerManager {
     fun positionMs() = if (web) WebHost.positionMs else player.currentPosition
     fun durationMs() = if (web) WebHost.durationMs else player.duration
     fun pause() = if (web) WebHost.pause() else player.pause()
+    fun seekTo(ms: Long) = if (web) WebHost.seekTo(ms.coerceAtLeast(0)) else player.seekTo(ms.coerceAtLeast(0))
+    fun isBuffering() = !web && player.playbackState == Player.STATE_BUFFERING
     fun toggle() {
         when {
             isPlaying() -> pause()
             web -> WebHost.resume()
             else -> player.play()
         }
+    }
+
+    // ------------- speed, loop and sleep timer -------------
+
+    private val _speed = MutableStateFlow(1f)
+    val speed: StateFlow<Float> get() = _speed
+
+    fun setSpeed(s: Float) {
+        _speed.value = s
+        WebHost.speed = s
+        player.setPlaybackSpeed(s)
+    }
+
+    private val _loop = MutableStateFlow(false)
+    val loop: StateFlow<Boolean> get() = _loop
+
+    fun setLoop(on: Boolean) {
+        _loop.value = on
+        player.repeatMode = if (on) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+    }
+
+    /** Sleep timer: 0 = off, [SLEEP_END_OF_VIDEO] = pause when the video ends, else the time (ms) to pause at. */
+    private val _sleepAt = MutableStateFlow(0L)
+    val sleepAt: StateFlow<Long> get() = _sleepAt
+    const val SLEEP_END_OF_VIDEO = -1L
+    private val sleepRunnable = Runnable { _sleepAt.value = 0; pause() }
+
+    /** [minutes] > 0 pauses after that long, 0 turns the timer off, -1 pauses at the end of the video. */
+    fun setSleep(minutes: Int) {
+        handler.removeCallbacks(sleepRunnable)
+        _sleepAt.value = when {
+            minutes > 0 -> System.currentTimeMillis() + minutes * 60_000L
+            minutes < 0 -> SLEEP_END_OF_VIDEO
+            else -> 0
+        }
+        if (minutes > 0) handler.postDelayed(sleepRunnable, minutes * 60_000L)
+    }
+
+    /** True (and the timer is cleared) when the "end of video" sleep timer should stop playback now. */
+    private fun sleepAtEnd(): Boolean {
+        if (_sleepAt.value != SLEEP_END_OF_VIDEO) return false
+        _sleepAt.value = 0
+        return true
     }
 
     private val ticker = object : Runnable {
@@ -186,6 +232,7 @@ object PlayerManager {
         if (!np.web) return
         Graph.store.savePosition(np.video.id, 0)
         when {
+            sleepAtEnd() -> WebHost.pause()
             player.repeatMode == Player.REPEAT_MODE_ONE -> { WebHost.seekTo(0); WebHost.resume() }
             hasNext() -> next()
             else -> WebHost.pause()

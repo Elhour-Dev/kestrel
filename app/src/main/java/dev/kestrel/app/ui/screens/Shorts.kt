@@ -93,7 +93,7 @@ fun ShortsScreen() {
     DisposableEffect(Unit) {
         PlayerManager.player.repeatMode = Player.REPEAT_MODE_ONE
         onDispose {
-            PlayerManager.player.repeatMode = Player.REPEAT_MODE_OFF
+            PlayerManager.player.repeatMode = if (PlayerManager.loop.value) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
             PlayerManager.pause()
         }
     }
