@@ -43,6 +43,8 @@ object WebHost {
   }
   if (window.kestrelLoop) return;
   window.kestrelWant = true;
+  // The video the app loaded; YouTube's own autoplay may move the page to another one later.
+  window.kestrelId = new URLSearchParams(location.search).get('v');
   window.kestrelLoop = setInterval(function(){
   if (document.head && !document.getElementById('kestrel-css')) {
     var s = document.createElement('style'); s.id = 'kestrel-css';
@@ -61,6 +63,13 @@ object WebHost {
       window.kestrelErr = true; KWeb.error();
     }
     if (!v) return;
+    var pv = new URLSearchParams(location.search).get('v') || '';
+    if (window.kestrelId && pv && pv !== window.kestrelId) {
+      // Not ours (YouTube's autoplay after the end): keep it paused and tell the app.
+      if (!v.paused) v.pause();
+      KWeb.progress(0, 0, false, pv);
+      return;
+    }
     // An ad that still got through plays in the same <video>: skip it, and keep it out of position/ended.
     var ad = document.querySelector('.ad-showing,.ad-interrupting');
     if (ad) {
@@ -98,7 +107,7 @@ object WebHost {
     if (v.muted) { v.muted = false; var m = document.querySelector('.ytp-unmute,.ytmUnmuteButton,ytm-unmute-button,button[aria-label*="nmute"]'); m && m.click(); }
     if (window.kestrelWant && v.paused && !v.ended && v.play) { var pr = v.play(); pr && pr.catch && pr.catch(function(){}); }
     if (!window.kestrelWant && !v.paused) v.pause();
-    KWeb.progress(Math.round(v.currentTime * 1000), Math.round((v.duration || 0) * 1000), !v.paused);
+    KWeb.progress(Math.round(v.currentTime * 1000), Math.round((v.duration || 0) * 1000), !v.paused, new URLSearchParams(location.search).get('v') || '');
   }, 500);
 })();
 """
@@ -209,7 +218,13 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
             }
             addJavascriptInterface(object {
                 @JavascriptInterface
-                fun progress(pos: Double, dur: Double, isPlaying: Boolean) {
+                fun progress(pos: Double, dur: Double, isPlaying: Boolean, page: String) {
+                    pageVideo = page.ifBlank { null }
+                    // YouTube's page moved on to its own next video (its autoplay; the page pauses it): not ours.
+                    if (page.isNotBlank() && videoId != null && page != videoId) {
+                        if (playing) { playing = false; changed() }
+                        return
+                    }
                     val stateChanged = isPlaying != playing || dur.toLong() != durationMs
                     positionMs = pos.toLong()
                     durationMs = dur.toLong()
@@ -250,6 +265,7 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
     fun play(ctx: Context, id: String, startSec: Long) {
         val w = view ?: create(ctx.applicationContext).also { view = it; park(it) }
         videoId = id
+        pageVideo = null
         positionMs = startSec * 1000
         durationMs = 0
         playing = true
@@ -260,7 +276,25 @@ document.addEventListener('visibilitychange', function(e){ e.stopImmediatePropag
         changed()
     }
 
-    fun resume() = js("window.kestrelWant=true;var v=document.querySelector('video');v&&v.play();").also { playing = true; changed() }
+    /** Video the page itself shows (differs from [videoId] after YouTube's own autoplay). */
+    @Volatile private var pageVideo: String? = null
+
+    fun resume() {
+        val id = videoId
+        if (id != null && pageVideo != null && pageVideo != id) {
+            // The page went on to another video: load ours again from the start.
+            pageVideo = null
+            positionMs = 0
+            durationMs = 0
+            playing = true
+            main.post { view?.loadUrl("https://m.youtube.com/watch?v=$id") }
+            changed()
+            return
+        }
+        resumeJs()
+    }
+
+    private fun resumeJs() = js("window.kestrelWant=true;var v=document.querySelector('video');v&&v.play();").also { playing = true; changed() }
     fun pause() = js("window.kestrelWant=false;var v=document.querySelector('video');v&&v.pause();").also { playing = false; changed() }
     fun seekTo(ms: Long) = js("var v=document.querySelector('video');if(v)v.currentTime=${ms / 1000.0};").also { positionMs = ms; changed() }
 

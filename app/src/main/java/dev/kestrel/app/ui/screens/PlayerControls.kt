@@ -132,12 +132,17 @@ fun PlayerControls(np: NowPlaying, activity: MainActivity, fullscreen: Boolean, 
     LaunchedEffect(np.video.id) {
         // Show once playback really starts, then hide after 3 s like before.
         var shownOnce = false
+        var wasEnded = false
         while (true) {
             pos = PlayerManager.positionMs()
             dur = PlayerManager.durationMs().takeIf { it > 0 } ?: 0
             playing = PlayerManager.isPlayingOrWill()
             buffering = PlayerManager.isBuffering() || PlayerManager.now.value?.loading == true
             if (!shownOnce && PlayerManager.isPlaying()) { shownOnce = true; visible = true; poke() }
+            // At the end, show the controls so Play (replay) is right there.
+            val ended = !playing && dur > 0 && pos >= dur - 1_500
+            if (ended && !wasEnded) visible = true
+            wasEnded = ended
             delay(250)
         }
     }
