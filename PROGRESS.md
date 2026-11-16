@@ -31,6 +31,12 @@ FIXED 710e196: Back from fullscreen stayed landscape when the phone lies flat (n
 Watch page restyled (title, meta + "...more" description sheet, channel row, like|dislike pill, Share/Save/Download/Quality/PiP pills,
 comments card with first comment, related as big cards). Direct mode tested via a downloaded file.
 VPN 2026-11-16 20:38: phone v2rayNG switched Tokyo-VLESS -> Tokyo-Hy2 (user asked to fix network). Links 49 s -> 8-13 s, play in 14-21 s.
+Done since (all phone-checked): a568bfc floating mini player, efc8a95 Shorts overlay, 38daacd search (voice, date/length/sort
+filters, big cards; fixed 401 on no-account InnerTube calls), 3ca7f15+4608f5c channel + You tab, 7f8efbf Settings categories,
+2d0cae6 YouTube notifications (bell count via notification/get_unseen_count, inbox via browse FEnotifications_inbox because
+get_notification_menu returns an empty promo now; WorkManager 30 min; tested post + tap opens the video).
+NEXT: hard-feature spikes (Cast, Upload/Create, Clips, live chat), premium perks (Jump ahead, queue screen, smart downloads,
+ad-free web check), then full regression + checker.
 Earlier note (old): Back in fullscreen once left a black paused screen (not reproduced yet). Direct mode, captions, audio track,
 sleep timer, PiP, popup, local file, live not yet tested on the new overlay.
 
