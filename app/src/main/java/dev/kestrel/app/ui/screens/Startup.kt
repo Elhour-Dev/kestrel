@@ -91,10 +91,16 @@ fun StartupScreen(onDone: (String) -> Unit) {
         }
         // Checks run in the app scope: the screen waits a few seconds at most, and if a check
         // is still running it keeps going in the background and updates the banner later.
+        // Opening a link: go straight to it. The checks wait so they don't slow down that first video.
+        if (dev.kestrel.app.MainActivity.Ui.pendingIntent != null) {
+            Health.scope.launch { kotlinx.coroutines.delay(20_000); runCatching { Health.runAll { } } }
+            onDone(next)
+            return@LaunchedEffect
+        }
         val up = Health.scope.async { runCatching { Updater.check() }.getOrNull() }
         val health = Health.scope.launch { runCatching { Health.runAll { } } }
         status = "Checking YouTube and updates…"
-        withTimeoutOrNull(6_000) { health.join(); up.await() }
+        withTimeoutOrNull(2_500) { health.join(); up.await() }
         val rel = if (up.isCompleted) up.await() else withTimeoutOrNull(300) { up.await() }
         if (rel != null && rel.versionCode != Graph.settings.skippedUpdate.value) update = rel
         // A broken feature makes an update worth offering even if it was skipped before.
