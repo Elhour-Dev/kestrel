@@ -107,3 +107,7 @@ Then: commit, push, final report (root cause, techniques, fixes, tests, what's l
   Slowness root cause: China -> VPS link today (VPS -> YouTube 0.05 s; NewPipe getInfo 11-14 s from both phone and PC).
 - Not done / limits: update prompt not shown in link-opened sessions; ad baseline not possible (YouTube served no ad data to this
   network signed out); web overlay takes all taps (in-page prompts like a content warning can't be tapped).
+- Builds 256-257 (installed): controls now hide 3 s after playback starts (were stuck on). Checker round 2 fixed: solver timeout no longer
+  aborts the backup loop; link start reset per link, ignored for live, capped. Release tests: 6/6 cold links (VIEW, SEND, t=) land on
+  the player; Subscribe with params -> Google says subscribed=true on another video of the channel; unsubscribed again (test undone).
+  Download not re-tested on release: network marked blocked (30 min) after all sources refused one video.
