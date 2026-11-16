@@ -112,6 +112,8 @@ fun LoginScreen() {
                     DropdownMenuItem(text = { Text("Paste cookies instead") }, onClick = { menu = false; paste = true })
                 }
             },
+            // The screen's Scaffold already leaves room for the status bar.
+            windowInsets = androidx.compose.foundation.layout.WindowInsets(0),
         )
         if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         Text(

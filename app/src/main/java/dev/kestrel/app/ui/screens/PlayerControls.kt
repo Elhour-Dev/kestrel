@@ -134,7 +134,7 @@ fun PlayerControls(np: NowPlaying, activity: MainActivity, fullscreen: Boolean, 
             pos = PlayerManager.positionMs()
             dur = PlayerManager.durationMs().takeIf { it > 0 } ?: 0
             playing = PlayerManager.isPlayingOrWill()
-            buffering = PlayerManager.isBuffering() || np.loading
+            buffering = PlayerManager.isBuffering() || PlayerManager.now.value?.loading == true
             if (!shownOnce && PlayerManager.isPlaying()) { shownOnce = true; visible = true; poke() }
             delay(250)
         }
@@ -156,16 +156,19 @@ fun PlayerControls(np: NowPlaying, activity: MainActivity, fullscreen: Boolean, 
             .semantics { contentDescription = "Show player controls" }
             .pointerInput(np.video.id) {
                 var holdJob: Job? = null
+                var before = 1f
                 detectTapGestures(
                     onPress = {
                         holdJob = scope.launch {
                             delay(600)
+                            before = PlayerManager.speed.value
                             holding = true
                             PlayerManager.setSpeed(2f)
                         }
                         tryAwaitRelease()
                         holdJob?.cancel()
-                        if (holding) { holding = false; PlayerManager.setSpeed(speed.takeIf { it != 2f } ?: 1f) }
+                        // Back to the speed the user had chosen.
+                        if (holding) { holding = false; PlayerManager.setSpeed(before) }
                     },
                     onTap = { visible = !visible; poke() },
                     onDoubleTap = { o ->

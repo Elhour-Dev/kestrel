@@ -108,8 +108,8 @@ fun MiniPlayer(modifier: Modifier = Modifier, onOpen: () -> Unit) {
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-            // Touch layer on top so the video views never take the taps.
-            Box(Modifier.fillMaxSize().background(Color(0x33000000)))
+            // Touch layer on top so the video views (YouTube's page in web mode) never take the taps.
+            Box(Modifier.fillMaxSize().background(Color(0x33000000)).clickable(onClick = onOpen))
             np.error?.let {
                 Text("Video unavailable", Modifier.align(Alignment.Center).padding(8.dp), color = Color.White,
                     style = MaterialTheme.typography.labelMedium, textAlign = TextAlign.Center, maxLines = 2, overflow = TextOverflow.Ellipsis)
