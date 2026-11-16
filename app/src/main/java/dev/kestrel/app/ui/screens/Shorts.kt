@@ -7,6 +7,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.outlined.ThumbUp
+import androidx.compose.material.icons.outlined.ThumbDown
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.automirrored.outlined.Comment
+import dev.kestrel.app.data.model.formatCount
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material.icons.Icons
@@ -15,7 +30,6 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -106,7 +120,12 @@ fun ShortsScreen() {
             if (page >= shorts.size - 3) vm.loadMore()
         }
     }
-    val web = PlayerManager.now.collectAsStateWithLifecycle().value?.web == true
+    val np = PlayerManager.now.collectAsStateWithLifecycle().value
+    val web = np?.web == true
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var commentsFor by remember { mutableStateOf<String?>(null) }
+    var saveFor by remember { mutableStateOf<Video?>(null) }
     VerticalPager(pager, Modifier.fillMaxSize().background(Color.Black), key = { shorts[it].id }) { page ->
         val v = shorts[page]
         Box(Modifier.fillMaxSize()) {
@@ -121,7 +140,6 @@ fun ShortsScreen() {
                             player = PlayerManager.player
                             keepScreenOn = true
                             setShutterBackgroundColor(android.graphics.Color.BLACK)
-                            setOnClickListener { val p = PlayerManager.player; if (p.isPlaying) p.pause() else p.play() }
                         }
                     },
                     onRelease = { it.player = null },
@@ -130,16 +148,63 @@ fun ShortsScreen() {
             } else {
                 AsyncImage(v.thumbnail, null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
             }
-            Column(Modifier.align(Alignment.BottomStart).padding(start = 16.dp, end = 72.dp, bottom = 24.dp)) {
-                Text(v.channelName, color = Color.White, style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.clickable { v.channelId?.let { nav.openChannel(it) } })
-                Text(v.title, color = Color.White, style = MaterialTheme.typography.bodyMedium, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            // Tap anywhere on the video: pause / play (also in the web player, whose page must not get touches).
+            var paused by remember(v.id) { mutableStateOf(false) }
+            Box(Modifier.fillMaxSize().clickable(interactionSource = null, indication = null) {
+                if (page == current) { PlayerManager.toggle(); paused = !paused }
+            })
+            if (paused && page == current) Icon(Icons.Default.PlayArrow, "Paused", Modifier.align(Alignment.Center).size(72.dp), tint = Color.White.copy(alpha = 0.8f))
+            Box(Modifier.align(Alignment.BottomStart).fillMaxWidth().height(260.dp)
+                .background(androidx.compose.ui.graphics.Brush.verticalGradient(listOf(Color.Transparent, Color(0x99000000)))))
+            Column(Modifier.align(Alignment.BottomStart).padding(start = 12.dp, end = 80.dp, bottom = 20.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.clickable { v.channelId?.let { nav.openChannel(it) } }, verticalAlignment = Alignment.CenterVertically) {
+                        dev.kestrel.app.ui.Avatar(v.channelAvatar ?: np?.resolved?.channelAvatar?.takeIf { page == current }, 32)
+                        Text(v.channelName.ifBlank { np?.video?.channelName?.takeIf { page == current }.orEmpty() }, Modifier.padding(start = 8.dp, end = 8.dp),
+                            color = Color.White, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    v.channelId?.let { cid -> SubscribeButton(dev.kestrel.app.data.model.Channel(cid, v.channelName, v.channelAvatar)) }
+                }
+                Text(v.title, Modifier.padding(top = 8.dp), color = Color.White, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
-            Column(Modifier.align(Alignment.BottomEnd).padding(bottom = 24.dp, end = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                IconButton(onClick = { nav.videoMenu(v) }) { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, "Save", tint = Color.White) }
-                IconButton(onClick = { Graph.downloads.enqueue(v, audioOnly = false, quality = 1080); nav.message("Download added") }) { Icon(Icons.Default.Download, "Download", tint = Color.White) }
-                IconButton(onClick = { nav.videoMenu(v) }) { Icon(Icons.Default.MoreVert, "More", tint = Color.White) }
+            var like by remember(v.id) { mutableStateOf(if (page == current) np?.info?.like else null) }
+            LaunchedEffect(np?.info, page == current) { if (page == current && np?.video?.id == v.id) np.info?.like?.let { like = it } }
+            fun rate(target: String) {
+                if (!Graph.account.isSignedIn) { nav.message("Sign in with Google to like videos"); return }
+                val newStatus = if (like == target) "INDIFFERENT" else target
+                val old = like
+                like = newStatus
+                scope.launch {
+                    runCatching { Graph.innerTube.rate(v.id, when (newStatus) { "LIKE" -> "like"; "DISLIKE" -> "dislike"; else -> "removelike" }) }
+                        .onFailure { like = old; nav.message(dev.kestrel.app.ui.friendlyError(it)) }
+                }
+            }
+            val likes = if (page == current) np?.resolved?.likes?.takeIf { it >= 0 }?.let { formatCount(it) } ?: np?.info?.likes?.ifBlank { null } else null
+            Column(Modifier.align(Alignment.BottomEnd).padding(bottom = 20.dp, end = 4.dp), verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally) {
+                ShortAction(if (like == "LIKE") Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp, likes ?: "Like") { rate("LIKE") }
+                ShortAction(if (like == "DISLIKE") Icons.Filled.ThumbDown else Icons.Outlined.ThumbDown, "Dislike") { rate("DISLIKE") }
+                ShortAction(Icons.AutoMirrored.Outlined.Comment, "Comments") { commentsFor = v.id }
+                ShortAction(Icons.Outlined.Share, "Share") {
+                    ctx.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain")
+                        .putExtra(android.content.Intent.EXTRA_TEXT, "https://www.youtube.com/shorts/${v.id}"), "Share"))
+                }
+                ShortAction(Icons.AutoMirrored.Filled.PlaylistAdd, "Save") { saveFor = v }
+                ShortAction(Icons.Default.Download, "Download") { Graph.downloads.enqueue(v, audioOnly = false, quality = 1080); nav.message("Download added") }
+                ShortAction(Icons.Default.MoreVert, "More") { nav.videoMenu(v) }
             }
         }
+    }
+    commentsFor?.let { id -> CommentsSheet(id) { commentsFor = null } }
+    saveFor?.let { SaveToPlaylistDialog(it) { saveFor = null } }
+}
+
+@Composable
+private fun ShortAction(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, onClick: () -> Unit) {
+    Column(Modifier.width(64.dp).clickable(onClick = onClick).padding(vertical = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.size(44.dp).clip(androidx.compose.foundation.shape.CircleShape).background(Color(0x40000000)), contentAlignment = Alignment.Center) {
+            Icon(icon, null, Modifier.size(26.dp), tint = Color.White)
+        }
+        Text(label, color = Color.White, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }

@@ -112,7 +112,7 @@ fun KestrelRoot(activity: MainActivity) {
 
     val fullscreenPlayer = route == "player" && (MainActivity.Ui.fullscreen || MainActivity.Ui.inPip)
     val showChrome = route in chromeRoutes
-    val showMini = route !in setOf("player", "startup", "onboarding", "login", "shortsplayer") && !MainActivity.Ui.inPip
+    val showMini = route !in setOf("player", "startup", "onboarding", "login", "shorts") && !MainActivity.Ui.inPip
 
     CompositionLocalProvider(LocalNav provides appNav) {
         Scaffold(
